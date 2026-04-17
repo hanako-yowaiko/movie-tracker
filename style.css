@@ -759,6 +759,27 @@ a:hover { text-decoration: underline; }
 
 .form-hint-link { font-size: 12px; color: var(--text2); }
 
+/* QRコード */
+.qr-section { background: var(--surface2); border-radius: var(--radius); padding: 14px; }
+.qr-desc { font-size: 13px; color: var(--text2); margin-bottom: 10px; }
+.qr-btn {
+  background: var(--prime);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: opacity var(--ease);
+}
+.qr-btn:hover { opacity: .85; }
+.qr-area { margin-top: 14px; text-align: center; }
+.qr-img { width: 200px; height: 200px; border-radius: var(--radius); background: #fff; padding: 8px; }
+.qr-note { font-size: 11px; color: var(--expiring); margin-top: 8px; }
+.settings-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
 /* Toast */
 .toast {
   position: fixed;

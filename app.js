@@ -620,6 +620,9 @@ function setupEvents() {
     if (e.key === 'Enter') apiKeyBtn.click();
   });
 
+  /* --- QRコード --- */
+  document.getElementById('showQRBtn').addEventListener('click', showQRCode);
+
   /* --- 設定 --- */
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('settingsClose').addEventListener('click', closeSettings);
@@ -706,12 +709,37 @@ function showSetupError(msg) {
 }
 
 /* ============================================================
+   QRコード（スマホ設定共有）
+   ============================================================ */
+function showQRCode() {
+  const area = document.getElementById('qrArea');
+  const img  = document.getElementById('qrImg');
+  if (!state.githubToken) { toast('GitHubトークンが設定されていません'); return; }
+
+  const setupUrl = `${location.origin}${location.pathname}#setup/${state.githubToken}`;
+  const qrApi    = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setupUrl)}`;
+  img.src = qrApi;
+  area.classList.toggle('hidden');
+}
+
+/* ============================================================
    Init
    ============================================================ */
 async function init() {
   loadLocal();
   setupSearch();
   setupEvents();
+
+  // QRコードからの自動セットアップ（#setup/TOKEN）
+  const hash = location.hash;
+  if (hash.startsWith('#setup/')) {
+    const token = hash.slice(7);
+    history.replaceState(null, '', location.pathname); // ハッシュをURLから消す
+    if (token) {
+      state.githubToken = token;
+      saveLocal();
+    }
+  }
 
   if (!state.githubToken) { showScreen('step1'); return; }
 

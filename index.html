@@ -184,6 +184,19 @@
       <button id="settingsClose" class="modal-close-btn">✕</button>
       <h2 class="modal-title">設定</h2>
 
+      <!-- スマホ用QRコード -->
+      <div class="form-section qr-section">
+        <div class="form-label">📱 スマホ・他の端末に設定を共有</div>
+        <p class="qr-desc">QRコードをスマホで読み取ると、トークン入力なしで自動設定されます。</p>
+        <button id="showQRBtn" class="qr-btn">QRコードを表示</button>
+        <div id="qrArea" class="qr-area hidden">
+          <img id="qrImg" src="" alt="QRコード" class="qr-img">
+          <p class="qr-note">⚠️ このQRコードは他人に見せないでください</p>
+        </div>
+      </div>
+
+      <div class="settings-divider"></div>
+
       <div class="form-section">
         <div class="form-label">GitHubトークン <span class="form-hint">（変更する場合のみ入力）</span></div>
         <input type="password" id="settingsGhToken" class="text-input" placeholder="ghp_...（変更しない場合は空欄）">
