@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>映画ウォッチリスト</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ステップ1: GitHub接続 -->
+  <div id="step1" class="setup-screen hidden">
+    <div class="setup-card">
+      <div class="setup-icon">🎬</div>
+      <h1>映画ウォッチリスト</h1>
+      <p class="setup-desc">GitHubと連携してスマホ・PCでデータを自動同期します。</p>
+      <div class="setup-steps">
+        <div class="step">① 下のリンクからGitHubでトークンを発行<br>
+          <a href="https://github.com/settings/tokens/new?scopes=gist&description=MovieWatchlist" target="_blank">
+            → GitHubトークン発行ページ（gistにチェックが入った状態で開きます）
+          </a>
+        </div>
+        <div class="step">② 発行されたトークン（ghp_で始まる文字列）を貼り付け</div>
+      </div>
+      <input type="password" id="setupToken" class="setup-input" placeholder="ghp_xxxxxxxxxxxx">
+      <button id="setupConnectBtn" class="primary-btn">GitHubに接続する</button>
+      <p id="setupError" class="error-text hidden"></p>
+    </div>
+  </div>
+
+  <!-- ローディング -->
+  <div id="loadingScreen" class="setup-screen hidden">
+    <div class="setup-card">
+      <div class="loading-icon">☁️</div>
+      <p class="loading-text">データを読み込んでいます...</p>
+    </div>
+  </div>
+
+  <!-- ステップ2: TMDBキー入力（初回のみ） -->
+  <div id="step2" class="setup-screen hidden">
+    <div class="setup-card">
+      <div class="setup-icon">🎬</div>
+      <h2>TMDBのAPIキーを設定</h2>
+      <p class="setup-desc">映画データの取得に必要です。一度設定すれば全端末で共有されます。</p>
+      <div class="setup-steps">
+        <div class="step">① <a href="https://www.themoviedb.org/settings/api" target="_blank">TMDBのAPI設定</a>を開く</div>
+        <div class="step">② 「APIキー」欄の文字列をコピーして貼り付け</div>
+      </div>
+      <input type="text" id="setupApiKey" class="setup-input" placeholder="TMDBのAPIキー（例: abc123...）">
+      <button id="setupApiKeyBtn" class="primary-btn">設定して始める</button>
+    </div>
+  </div>
+
+  <!-- メインアプリ -->
+  <div id="mainApp" class="main-app hidden">
+
+    <!-- ヘッダー -->
+    <header class="header">
+      <div class="header-brand">
+        <span class="header-logo">🎬</span>
+        <span class="header-title">映画ウォッチリスト</span>
+      </div>
+      <div class="header-search">
+        <div class="search-wrapper">
+          <input type="text" id="searchInput" class="search-input" placeholder="映画を検索して追加..." autocomplete="off">
+          <button id="searchClear" class="search-clear hidden">✕</button>
+        </div>
+        <div id="searchDropdown" class="search-dropdown hidden">
+          <div id="searchList" class="search-list"></div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="syncStatus" class="sync-status"></span>
+        <button id="settingsBtn" class="settings-btn" title="設定">⚙️</button>
+      </div>
+    </header>
+
+    <!-- フィルター・ソートバー -->
+    <div class="filter-bar">
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-filter="all">すべて<span class="tab-count" id="cnt-all"></span></button>
+        <button class="filter-tab" data-filter="watchlist">未視聴<span class="tab-count" id="cnt-watchlist"></span></button>
+        <button class="filter-tab" data-filter="watched">視聴済み<span class="tab-count" id="cnt-watched"></span></button>
+        <button class="filter-tab prime-tab" data-filter="prime">▶ Primeのみ<span class="tab-count" id="cnt-prime"></span></button>
+        <button class="filter-tab expiring-tab" data-filter="expiring">⏰ もうすぐ終了<span class="tab-count" id="cnt-expiring"></span></button>
+      </div>
+      <select id="sortSelect" class="sort-select">
+        <option value="added">追加順</option>
+        <option value="title">タイトル順</option>
+        <option value="year">公開年順</option>
+        <option value="rating">評価順</option>
+      </select>
+    </div>
+
+    <!-- 映画グリッド -->
+    <main class="content">
+      <div id="movieGrid" class="movie-grid"></div>
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-icon">🎞️</div>
+        <p>映画が見つかりません</p>
+        <p class="empty-sub">上の検索バーから映画を追加しましょう</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- 映画詳細モーダル -->
+  <div id="detailModal" class="modal-backdrop hidden">
+    <div class="modal detail-modal">
+      <button id="detailClose" class="modal-close-btn">✕</button>
+      <div class="detail-layout">
+        <div class="detail-poster-col">
+          <div class="detail-poster-wrap">
+            <img id="detailPoster" class="detail-poster" src="" alt="">
+            <div id="detailNoPoster" class="detail-no-poster hidden">🎬</div>
+          </div>
+          <div id="detailBadges" class="detail-badges"></div>
+        </div>
+        <div class="detail-info-col">
+          <h2 id="detailTitle" class="detail-title"></h2>
+          <div id="detailMeta" class="detail-meta"></div>
+          <p id="detailOverview" class="detail-overview"></p>
+
+          <div class="form-section">
+            <div class="form-label">ステータス</div>
+            <div class="status-toggle">
+              <button class="status-btn" id="statusWatchlist">📋 見たい</button>
+              <button class="status-btn" id="statusWatched">✅ 視聴済み</button>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">評価 <span class="form-hint">（視聴後に記録）</span></div>
+            <div class="star-rating" id="starRating">
+              <span class="star" data-val="1">★</span>
+              <span class="star" data-val="2">★</span>
+              <span class="star" data-val="3">★</span>
+              <span class="star" data-val="4">★</span>
+              <span class="star" data-val="5">★</span>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">Amazonプライム</div>
+            <div class="prime-row">
+              <label class="toggle-switch">
+                <input type="checkbox" id="primeToggle">
+                <span class="toggle-track"></span>
+              </label>
+              <span id="primeLabel" class="toggle-label">オフ</span>
+              <span id="primeAutoLabel" class="auto-label"></span>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">配信終了日 <span class="form-hint">（Primeの期限）</span></div>
+            <div class="date-row">
+              <input type="date" id="expiresDateInput" class="date-input">
+              <button id="clearDateBtn" class="link-btn">クリア</button>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">タグ</div>
+            <div id="currentTagsList" class="current-tags-list"></div>
+            <div id="presetTagsRow" class="preset-tags-row"></div>
+            <div class="tag-add-row">
+              <input type="text" id="tagInput" class="tag-text-input" placeholder="カスタムタグを追加...">
+              <button id="addTagBtn" class="small-btn">追加</button>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="saveDetailBtn" class="primary-btn">保存</button>
+            <button id="deleteDetailBtn" class="danger-btn">削除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div id="settingsModal" class="modal-backdrop hidden">
+    <div class="modal settings-modal">
+      <button id="settingsClose" class="modal-close-btn">✕</button>
+      <h2 class="modal-title">設定</h2>
+
+      <div class="form-section">
+        <div class="form-label">GitHubトークン <span class="form-hint">（変更する場合のみ入力）</span></div>
+        <input type="password" id="settingsGhToken" class="text-input" placeholder="ghp_...（変更しない場合は空欄）">
+        <div class="form-hint-link">
+          <a href="https://github.com/settings/tokens/new?scopes=gist&description=MovieWatchlist" target="_blank">新しいトークンを発行 →</a>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-label">TMDB APIキー</div>
+        <input type="text" id="settingsApiKey" class="text-input" placeholder="APIキーを入力...">
+        <div class="form-hint-link">
+          <a href="https://www.themoviedb.org/settings/api" target="_blank">TMDBでAPIキーを確認 →</a>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-label">地域（Amazonプライム判定用）</div>
+        <select id="countrySelect" class="select-input">
+          <option value="JP">日本 (JP)</option>
+          <option value="US">アメリカ (US)</option>
+          <option value="GB">イギリス (GB)</option>
+          <option value="CA">カナダ (CA)</option>
+          <option value="AU">オーストラリア (AU)</option>
+        </select>
+      </div>
+
+      <button id="saveSettingsBtn" class="primary-btn">保存</button>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
