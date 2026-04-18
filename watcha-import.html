@@ -83,11 +83,12 @@
       </a>
     </div>
     <div class="note">
-      ① 上の青いボタンをブックマークバーへドラッグ<br>
-      ② <strong>pedia.watcha.com</strong> を開く（ログイン済みの状態で）<br>
+      ① 青いボタンをブックマークバーへドラッグ<br>
+      ② <strong>pedia.watcha.com</strong> を開き、<strong>自分の評価一覧ページ</strong>に移動<br>
+      　（プロフィール → 「レビュー」や「評価」タブ）<br>
       ③ ブックマークバーの「🎬 Watchaからエクスポート」をクリック<br>
       ④ 自動で <strong>watcha-export.json</strong> がダウンロードされます<br>
-      ⑤ データが0件だった場合は「🔍 診断」ボタンを同様に使ってください
+      ⑤ 続けて<strong>「見たい」リストページ</strong>でも同様に実行すると合算されます
     </div>
   </div>
 
@@ -135,73 +136,119 @@
 </div>
 
 <script>
-// ========== ブックマークレット（改良版・複数APIパターン対応） ==========
+// ========== メインブックマークレット（DOMスクレイピング版） ==========
+// Watcha PediaのAPIは外部からアクセス不可のため、ページに表示されているデータを直接読み取る
 (function(){
   const code = `(async()=>{try{
-    // ユーザー情報取得
-    const meRes=await fetch('/api/users/me',{credentials:'include'});
-    if(!meRes.ok){alert('ログインしてください（ステータス:'+meRes.status+')');return;}
-    const me=await meRes.json();
-    const code=me.result?.code||me.result?.user?.code||me.result?.id||me.code||'me';
-    console.log('Watchaユーザーコード:',code,'レスポンス:',JSON.stringify(me).slice(0,200));
+    // Next.jsの埋め込みデータを最優先で読む
+    const nd=window.__NEXT_DATA__;
+    let rated=[],wished=[];
 
-    // ページネーション付きデータ取得（複数レスポンス形式に対応）
-    const collect=async(url)=>{
-      const all=[];let page=1;
-      while(true){
-        const r=await fetch(url+'&page='+page,{credentials:'include'});
-        if(!r.ok){console.warn('fetch失敗',url,r.status);break;}
-        const d=await r.json();
-        // レスポンスの形式を自動判定
-        const items=Array.isArray(d.result)?d.result
-          :Array.isArray(d.result?.items)?d.result.items
-          :Array.isArray(d.result?.records)?d.result.records
-          :Array.isArray(d.items)?d.items
-          :Array.isArray(d.records)?d.records
-          :Array.isArray(d.data)?d.data
-          :Array.isArray(d)?d:[];
-        console.log('取得:',url,'page:'+page,'件数:'+items.length,'キー例:',Object.keys(d));
-        if(!items.length)break;
-        all.push(...items);
-        if(items.length<40)break;
-        page++;
+    if(nd){
+      // pagePropsの中を再帰的に探索して映画データを見つける
+      const findArrays=(obj,depth=0)=>{
+        if(depth>5||!obj||typeof obj!=='object')return;
+        for(const k of Object.keys(obj)){
+          const v=obj[k];
+          if(Array.isArray(v)&&v.length>0&&v[0]&&(v[0].title||v[0].content||v[0].media)){
+            return v;
+          }
+          const found=findArrays(v,depth+1);
+          if(found)return found;
+        }
+      };
+      const pp=nd.props?.pageProps||{};
+
+      // よくあるキー名を試す
+      const ratedKeys=['records','ratings','ratedContents','watchedList'];
+      const wishedKeys=['wishes','wishlist','wantToWatch','bookmarks'];
+      for(const k of ratedKeys){if(Array.isArray(pp[k])){rated=pp[k];break;}}
+      for(const k of wishedKeys){if(Array.isArray(pp[k])){wished=pp[k];break;}}
+
+      if(!rated.length&&!wished.length){
+        const found=findArrays(pp);
+        if(found){
+          alert('データを発見しましたが種類不明です。\\n件数: '+found.length+'\\n最初の項目: '+JSON.stringify(found[0]).slice(0,200));
+        }
       }
-      return all;
-    };
+    }
 
-    // 評価済み映画
-    const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');
-    // 見たい映画
-    const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');
+    // DOMスクレイピング（Next.jsデータがない or 空の場合）
+    if(!rated.length&&!wished.length){
+      // 自動スクロールで全件読み込み
+      alert('ページをスクロールして全件読み込みます。しばらくお待ちください...');
+      let last=0;
+      for(let i=0;i<50;i++){
+        window.scrollTo(0,document.body.scrollHeight);
+        await new Promise(r=>setTimeout(r,600));
+        if(document.body.scrollHeight===last)break;
+        last=document.body.scrollHeight;
+      }
+      window.scrollTo(0,0);
 
-    const exportData={exportedAt:new Date().toISOString(),userCode:code,rated,wished};
-    console.log('エクスポートデータ:',JSON.stringify(exportData).slice(0,500));
+      // 映画カードを探す（複数セレクタを試す）
+      const cards=[
+        ...document.querySelectorAll('li[class*="Card"],li[class*="card"],div[class*="PosterCard"],div[class*="ContentCard"]'),
+        ...document.querySelectorAll('article'),
+      ];
+      const uniqueCards=[...new Set(cards)];
 
-    const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download='watcha-export.json';
+      for(const card of uniqueCards){
+        const titleEl=card.querySelector('[class*="title"],[class*="Title"],h2,h3,h4,p[class*="name"]');
+        const title=titleEl?.textContent?.trim();
+        if(!title||title.length<1)continue;
+
+        // 星評価を探す
+        const starEls=card.querySelectorAll('[class*="star"],[class*="Star"],[class*="rating"],[class*="Rating"]');
+        let star=0;
+        for(const s of starEls){
+          const cls=s.className||'';
+          if(cls.includes('fill')||cls.includes('active')||cls.includes('on'))star++;
+        }
+        // aria-labelから評価を取得
+        const ariaLabel=card.getAttribute('aria-label')||'';
+        const ariaMatch=ariaLabel.match(/([0-9.]+)/);
+        if(ariaMatch)star=parseFloat(ariaMatch[1]);
+
+        // 年を探す
+        const yearEl=card.querySelector('[class*="year"],[class*="Year"]');
+        const yearMatch=(yearEl?.textContent||card.textContent||'').match(/\\b(19|20)\\d{2}\\b/);
+        const year=yearMatch?yearMatch[0]:'';
+
+        if(star>0){
+          rated.push({title,year,star:star*2,_dom:true});
+        } else {
+          wished.push({title,year,_dom:true});
+        }
+      }
+    }
+
+    if(!rated.length&&!wished.length){
+      alert('データが取得できませんでした。\\n\\n【対処法】\\nWatchaのマイページ（評価一覧または見たいリスト）を開いた状態でこのブックマークを押してください。');
+      return;
+    }
+
+    const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),source:'dom',rated,wished},null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='watcha-export.json';
     document.body.appendChild(a);a.click();a.remove();
-    alert('完了！\\n評価済み:'+rated.length+'件\\n見たい:'+wished.length+'件\\n\\n件数が0の場合はコンソール(F12)を確認してください');
-  }catch(e){alert('エラー: '+e.message+'\\n\\nF12→コンソールで詳細を確認');console.error(e);}})();`;
+    alert('取得完了！\\n評価済み: '+rated.length+'件\\n見たい: '+wished.length+'件');
+  }catch(e){alert('エラー: '+e.message);}})();`;
   document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
 })();
 
-// ========== 診断用ブックマークレット（APIレスポンスをアラートで表示） ==========
+// ========== 診断用ブックマークレット（Next.jsデータ構造を確認） ==========
 (function(){
-  const code = `(async()=>{try{
-    const show=(label,obj)=>alert(label+'\\n\\n'+JSON.stringify(obj,null,2).slice(0,600));
-    const r=await fetch('/api/users/me',{credentials:'include'});
-    const me=await r.json();
-    show('①/api/users/me のレスポンス',me);
-    const code=me.result?.code||me.result?.user?.code||me.result?.id||me.code||'me';
-    alert('②ユーザーコード: '+code);
-    const r2=await fetch('/api/users/'+code+'/ratings?count=5&mediaType=movie',{credentials:'include'});
-    const d2=await r2.json();
-    show('③評価一覧APIのレスポンス（最初の5件）',d2);
-    const r3=await fetch('/api/users/'+code+'/wishes?count=5&mediaType=movie',{credentials:'include'});
-    const d3=await r3.json();
-    show('④見たい一覧APIのレスポンス（最初の5件）',d3);
+  const code = `(()=>{try{
+    const nd=window.__NEXT_DATA__;
+    if(!nd){alert('Next.jsデータなし。通常のDOMスクレイピングを使います。');return;}
+    const pp=nd.props?.pageProps||{};
+    const keys=Object.keys(pp);
+    let msg='pagePropsのキー:\\n'+keys.join(', ')+'\\n\\n';
+    for(const k of keys){
+      const v=pp[k];
+      if(Array.isArray(v)){msg+='配列 ['+k+']: '+v.length+'件\\n最初の項目: '+JSON.stringify(v[0]).slice(0,150)+'\\n\\n';}
+    }
+    alert(msg.slice(0,800));
   }catch(e){alert('エラー: '+e.message);}})();`;
   document.getElementById('debugBookmarklet').href = 'javascript:' + encodeURIComponent(code);
 })();
