@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watcha Pediaインポート</title>
+  <style>
+    :root { --bg:#0f0f0f; --surface:#1c1c1e; --surface2:#2c2c2e; --border:#38383a; --text:#f2f2f7; --text2:#aeaeb2; --text3:#636366; --accent:#0a84ff; --success:#30d158; --danger:#ff453a; --warn:#ffd60a; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif; padding:24px; }
+    .container { max-width:680px; margin:0 auto; }
+    h1 { font-size:22px; margin-bottom:6px; }
+    .subtitle { color:var(--text2); font-size:14px; margin-bottom:32px; }
+    .step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px; margin-bottom:16px; }
+    .step-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .step-num { background:var(--accent); color:#fff; font-size:13px; font-weight:700; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .step-title { font-size:16px; font-weight:600; }
+    .step-desc { color:var(--text2); font-size:13px; line-height:1.7; margin-bottom:14px; }
+    .code-block { background:#000; border:1px solid var(--border); border-radius:8px; padding:14px; font-family:monospace; font-size:12px; color:#4ec9b0; line-height:1.6; overflow-x:auto; white-space:pre; position:relative; }
+    .copy-btn { position:absolute; top:8px; right:8px; background:var(--surface2); border:1px solid var(--border); color:var(--text2); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+    .copy-btn:hover { color:var(--text); }
+    .note { background:var(--surface2); border-left:3px solid var(--warn); border-radius:4px; padding:10px 14px; font-size:13px; color:var(--text2); margin-top:12px; }
+    .upload-area { border:2px dashed var(--border); border-radius:10px; padding:28px; text-align:center; cursor:pointer; transition:border-color .2s; }
+    .upload-area:hover, .upload-area.drag { border-color:var(--accent); }
+    .upload-icon { font-size:36px; margin-bottom:8px; }
+    .upload-label { font-size:14px; color:var(--text2); }
+    input[type=file] { display:none; }
+    .token-row { display:flex; gap:10px; margin-top:14px; }
+    .token-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:10px 12px; font-size:14px; outline:none; }
+    .token-input:focus { border-color:var(--accent); }
+    .import-btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .import-btn:disabled { opacity:.4; cursor:default; }
+    #progressArea { display:none; margin-top:16px; }
+    .progress-bar-wrap { background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; margin:10px 0; }
+    .progress-bar { background:var(--accent); height:100%; transition:width .3s; width:0; }
+    .progress-text { font-size:13px; color:var(--text2); }
+    .result-list { margin-top:14px; max-height:280px; overflow-y:auto; }
+    .result-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .result-item:last-child { border-bottom:none; }
+    .result-poster { width:32px; height:48px; object-fit:cover; border-radius:3px; background:var(--surface2); flex-shrink:0; }
+    .tag { font-size:11px; padding:2px 7px; border-radius:3px; font-weight:600; }
+    .tag-ok   { background:rgba(48,209,88,.15); color:var(--success); }
+    .tag-skip { background:var(--surface2); color:var(--text3); }
+    .tag-err  { background:rgba(255,69,58,.15); color:var(--danger); }
+    .summary { background:var(--surface2); border-radius:8px; padding:14px; margin-top:14px; font-size:14px; line-height:2; }
+    .open-btn { display:block; margin-top:14px; text-align:center; background:var(--success); color:#000; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:700; cursor:pointer; text-decoration:none; }
+    .bookmarklet-link { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; border-radius:10px; padding:12px 24px; font-size:15px; font-weight:700; cursor:grab; user-select:none; box-shadow:0 2px 12px rgba(10,132,255,.35); transition:opacity .2s; }
+    .bookmarklet-link:hover { opacity:.85; }
+    .bookmarklet-link:active { cursor:grabbing; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🎬 Watcha Pedia → ウォッチリスト インポート</h1>
+  <p class="subtitle">Watcha Pediaの評価・見たい映画リストをインポートします</p>
+
+  <!-- Step 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">ブックマークをブックマークバーにドラッグ</div>
+    </div>
+    <p class="step-desc">
+      下のボタンをブラウザの<strong>ブックマークバーにドラッグ</strong>してください。<br>
+      （ブックマークバーが見えない場合は <strong>⌘+Shift+B</strong> で表示できます）
+    </p>
+    <div style="text-align:center;padding:10px 0 6px">
+      <a id="bookmarklet" href="" class="bookmarklet-link" title="このリンクをブックマークバーにドラッグ">
+        🎬 Watchaからエクスポート
+      </a>
+    </div>
+    <div class="note" style="margin-top:10px">
+      ① このリンクをブックマークバーへドラッグ<br>
+      ② <strong>pedia.watcha.com</strong> を開く（ログイン済みの状態で）<br>
+      ③ ブックマークバーの「🎬 Watchaからエクスポート」をクリック<br>
+      ④ 自動で <strong>watcha-export.json</strong> がダウンロードされます
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">ダウンロードしたファイルを読み込む</div>
+    </div>
+    <p class="step-desc">ダウンロードされた <strong>watcha-export.json</strong> をここにドロップしてください。</p>
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">クリックまたはドラッグ＆ドロップ</div>
+      <input type="file" id="fileInput" accept=".json">
+    </div>
+    <div class="token-row">
+      <input type="password" class="token-input" id="ghToken" placeholder="GitHubトークン（ghp_...）">
+      <button class="import-btn" id="importBtn" disabled onclick="startImport()">インポート開始</button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div id="progressArea" class="step">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">インポート中...</div>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-text" id="progressText">準備中...</div>
+    <div class="result-list" id="resultList"></div>
+    <div class="summary hidden" id="summary"></div>
+    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="open-btn hidden" id="openBtn">
+      ✓ ウォッチリストを開く →
+    </a>
+  </div>
+</div>
+
+<script>
+// ブックマークレットのhrefを設定
+(function(){
+  const code = `(async()=>{const me=await fetch('/api/users/me',{credentials:'include'}).then(r=>r.json());const code=me.result?.code||me.result?.id||'me';const collect=async(url)=>{const all=[];let page=1;while(true){const r=await fetch(url+'&page='+page,{credentials:'include'});if(!r.ok)break;const d=await r.json();const items=d.result??d.items??[];if(!items.length)break;all.push(...items);if(items.length<40)break;page++;}return all;};const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),rated,wished},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='watcha-export.json';document.body.appendChild(a);a.click();a.remove();alert('完了！評価'+rated.length+'件 + 見たい'+wished.length+'件');})();`;
+  document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
+})();
+
+const GIST_FILENAME = 'movie-watchlist.json';
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
+let watchaData = null;
+let tmdbApiKey = '';
+
+// --- ファイル読み込み ---
+const fileInput = document.getElementById('fileInput');
+const uploadArea = document.getElementById('uploadArea');
+const ghTokenInput = document.getElementById('ghToken');
+const importBtn = document.getElementById('importBtn');
+
+fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag'));
+uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+ghTokenInput.addEventListener('input', checkReady);
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      watchaData = JSON.parse(e.target.result);
+      const total = (watchaData.rated?.length||0) + (watchaData.wished?.length||0);
+      uploadArea.innerHTML = `<div class="upload-icon">✅</div><div class="upload-label">${file.name}（評価${watchaData.rated?.length||0}件 + 見たい${watchaData.wished?.length||0}件）</div>`;
+      checkReady();
+    } catch { alert('JSONファイルの読み込みに失敗しました'); }
+  };
+  reader.readAsText(file);
+}
+
+function checkReady() {
+  importBtn.disabled = !(watchaData && ghTokenInput.value.trim());
+}
+
+// --- コードコピー ---
+function copyCode() {
+  const code = document.getElementById('codeBlock').innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'コピーしました！';
+    setTimeout(() => btn.textContent = 'コピー', 2000);
+  });
+}
+
+// --- インポート処理 ---
+async function startImport() {
+  const token = ghTokenInput.value.trim();
+  if (!watchaData || !token) return;
+
+  importBtn.disabled = true;
+  document.getElementById('progressArea').style.display = 'block';
+  document.getElementById('progressArea').scrollIntoView({behavior:'smooth'});
+
+  try {
+    // Gist接続
+    setProgress(0, 'GitHubに接続中...');
+    const gistRes = await ghFetch('/gists?per_page=100', token);
+    const found = gistRes.find(g => g.files[GIST_FILENAME]);
+    if (!found) { throw new Error('ウォッチリストのGistが見つかりません。先にメインアプリでセットアップしてください。'); }
+
+    const gistDetail = await ghFetch(`/gists/${found.id}`, token);
+    const existing = JSON.parse(gistDetail.files[GIST_FILENAME]?.content || '{}');
+    tmdbApiKey = existing.apiKey || '';
+    const existingMovies = existing.movies || [];
+    const existingTmdbIds = new Set(existingMovies.map(m => m.tmdbId));
+
+    // 処理対象をまとめる
+    const rated  = watchaData.rated  || [];
+    const wished = watchaData.wished || [];
+    const all = [
+      ...rated.map(m  => ({...m, _status:'watched'})),
+      ...wished.map(m => ({...m, _status:'watchlist'})),
+    ];
+
+    setProgress(5, `${all.length}件を処理します...`);
+
+    const newMovies = [];
+    const resultList = document.getElementById('resultList');
+
+    for (let i = 0; i < all.length; i++) {
+      const item = all[i];
+      const pct  = 5 + Math.round((i / all.length) * 85);
+      const title = getTitle(item);
+      const year  = getYear(item);
+      setProgress(pct, `検索中: ${title} (${i+1}/${all.length})`);
+
+      if (!tmdbApiKey) { addResult(resultList, null, title, 'skip', 'APIキーなし'); continue; }
+
+      try {
+        const found = await searchTMDB(title, year);
+        if (!found) { addResult(resultList, null, title, 'skip', '見つからず'); continue; }
+        if (existingTmdbIds.has(found.id)) { addResult(resultList, found.poster_path, title, 'skip', '追加済み'); continue; }
+
+        const movie = {
+          id:            `m_${Date.now()}_${i}`,
+          tmdbId:        found.id,
+          title:         found.title || found.original_title,
+          originalTitle: found.original_title,
+          year:          (found.release_date||'').slice(0,4)||year||'?',
+          posterPath:    found.poster_path || null,
+          overview:      found.overview || '',
+          status:        item._status,
+          rating:        toStars(item.star),
+          tags:          [],
+          onPrime:       false,
+          primeDetected: false,
+          expiresDate:   null,
+          addedAt:       new Date().toISOString(),
+        };
+        newMovies.push(movie);
+        existingTmdbIds.add(found.id);
+        addResult(resultList, found.poster_path, movie.title, 'ok', movie.status==='watched'?'★'.repeat(movie.rating)||'視聴済み':'見たい');
+      } catch(e) {
+        addResult(resultList, null, title, 'err', e.message);
+      }
+
+      await sleep(250); // TMDBレート制限対策
+    }
+
+    // Gistに保存
+    setProgress(92, 'クラウドに保存中...');
+    const merged = [...newMovies, ...existingMovies];
+    await ghPatch(found.id, token, { movies: merged, apiKey: tmdbApiKey, country: existing.country || 'JP' });
+
+    setProgress(100, '完了！');
+    document.getElementById('summary').innerHTML =
+      `✅ <strong>${newMovies.length}件</strong>を追加しました（スキップ: ${all.length - newMovies.length}件）`;
+    document.getElementById('summary').classList.remove('hidden');
+    document.getElementById('openBtn').classList.remove('hidden');
+
+  } catch(e) {
+    setProgress(0, `エラー: ${e.message}`);
+    importBtn.disabled = false;
+  }
+}
+
+// --- ユーティリティ ---
+function getTitle(item) {
+  return item.content?.title || item.content?.titleEn || item.title || item.titleEn || '不明';
+}
+function getYear(item) {
+  const y = item.content?.year || item.year || '';
+  return y ? String(y) : '';
+}
+function toStars(star) {
+  if (!star) return 0;
+  return Math.round(star / 2); // Watchaは10点満点、うちは5点
+}
+
+async function searchTMDB(title, year) {
+  const params = new URLSearchParams({ api_key: tmdbApiKey, query: title, language: 'ja-JP' });
+  if (year) params.set('year', year);
+  const res = await fetch(`https://api.themoviedb.org/3/search/movie?${params}`);
+  const d = await res.json();
+  return d.results?.[0] || null;
+}
+
+async function ghFetch(path, token, opts={}) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    ...opts,
+    headers: { 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json', 'X-GitHub-Api-Version':'2022-11-28' }
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.message || `GitHub ${res.status}`); }
+  return res.json();
+}
+
+async function ghPatch(gistId, token, data) {
+  return ghFetch(`/gists/${gistId}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify({version:1,...data}, null, 2) } } })
+  });
+}
+
+function setProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = text;
+}
+
+function addResult(container, poster, title, type, note) {
+  const el = document.createElement('div');
+  el.className = 'result-item';
+  el.innerHTML = `
+    <img class="result-poster" src="${poster ? TMDB_IMG+poster : ''}" onerror="this.style.visibility='hidden'">
+    <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>
+    <span class="tag tag-${type}">${note}</span>`;
+  container.prepend(el);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

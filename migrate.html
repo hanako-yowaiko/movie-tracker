@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>データ移行ツール</title>
+  <style>
+    :root { --bg:#0f0f0f; --surface:#1c1c1e; --border:#38383a; --text:#f2f2f7; --text2:#aeaeb2; --accent:#0a84ff; --success:#30d158; --danger:#ff453a; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:40px; max-width:480px; width:100%; text-align:center; }
+    .icon { font-size:52px; margin-bottom:16px; }
+    h1 { font-size:22px; margin-bottom:8px; }
+    .desc { color:var(--text2); font-size:14px; margin-bottom:24px; line-height:1.6; }
+    .count-box { background:#1f3a2a; border:1px solid var(--success); border-radius:10px; padding:14px; margin-bottom:24px; color:var(--success); font-size:16px; font-weight:600; }
+    .no-data { background:#2a1f1f; border:1px solid var(--danger); border-radius:10px; padding:14px; margin-bottom:24px; color:var(--danger); font-size:14px; }
+    label { display:block; text-align:left; font-size:12px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.06em; margin-bottom:7px; }
+    input { width:100%; background:#2c2c2e; border:1px solid var(--border); border-radius:8px; color:var(--text); padding:11px 14px; font-size:14px; outline:none; margin-bottom:16px; transition:border-color .2s; }
+    input:focus { border-color:var(--accent); }
+    .steps { background:#2c2c2e; border-radius:10px; padding:14px 18px; margin-bottom:20px; text-align:left; }
+    .step { font-size:13px; color:var(--text2); padding:4px 0; }
+    .step a { color:var(--accent); }
+    button { width:100%; background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px; font-size:15px; font-weight:700; cursor:pointer; transition:opacity .2s; }
+    button:hover { opacity:.85; }
+    button:disabled { opacity:.4; cursor:default; }
+    .result { margin-top:16px; padding:14px; border-radius:10px; font-size:14px; font-weight:600; }
+    .result.ok  { background:#1f3a2a; border:1px solid var(--success); color:var(--success); }
+    .result.err { background:#2a1f1f; border:1px solid var(--danger);  color:var(--danger); }
+    .hidden { display:none; }
+    .spinner { animation:spin 1s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🚚</div>
+  <h1>データ移行ツール</h1>
+  <p class="desc">ローカルで入力した映画をGitHub（クラウド）に移行します。<br>完了後はどの端末からでもデータにアクセスできます。</p>
+
+  <div id="dataStatus"></div>
+
+  <div id="form">
+    <div class="steps">
+      <div class="step">① <a href="https://github.com/settings/tokens/new?scopes=gist&description=MovieWatchlist" target="_blank">GitHubトークンを発行</a>（gistにチェック）</div>
+      <div class="step">② 発行されたトークンを貼り付け</div>
+    </div>
+    <label>GitHubトークン</label>
+    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxx">
+    <button id="migrateBtn">クラウドに移行する</button>
+  </div>
+
+  <div id="result" class="hidden"></div>
+</div>
+
+<script>
+const GIST_FILENAME = 'movie-watchlist.json';
+
+// ローカルデータを読み込む
+// v1, v2 どちらのキーにデータがあっても対応
+const raw = localStorage.getItem('movieTracker_v2') || localStorage.getItem('movieTracker_v1');
+const statusEl = document.getElementById('dataStatus');
+
+if (!raw) {
+  statusEl.innerHTML = '<div class="no-data">⚠️ 移行するデータが見つかりませんでした。<br>先にローカルアプリで映画を追加してください。</div>';
+  document.getElementById('migrateBtn').disabled = true;
+} else {
+  const data = JSON.parse(raw);
+  const movies = data.movies || [];
+  statusEl.innerHTML = `<div class="count-box">✓ ${movies.length}件の映画データが見つかりました</div>`;
+}
+
+// 移行実行
+document.getElementById('migrateBtn').addEventListener('click', async () => {
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) { showResult('error', 'トークンを入力してください'); return; }
+
+  const btn = document.getElementById('migrateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">⏳</span> 移行中...';
+
+  try {
+    const movies = JSON.parse(localStorage.getItem('movieTracker_v2') || localStorage.getItem('movieTracker_v1') || '{}').movies || [];
+
+    // Gistを検索
+    const gistsRes = await fetch('https://api.github.com/gists?per_page=100', {
+      headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
+    });
+    if (!gistsRes.ok) throw new Error('GitHubトークンが正しくありません');
+    const gists = await gistsRes.json();
+    const found = gists.find(g => g.files[GIST_FILENAME]);
+
+    let gistId, existingMovies = [], apiKey = '', country = 'JP';
+
+    if (found) {
+      // 既存Gistを読み込んでマージ
+      gistId = found.id;
+      const gistRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
+      });
+      const gist = await gistRes.json();
+      const existing = JSON.parse(gist.files[GIST_FILENAME]?.content || '{}');
+      existingMovies = existing.movies || [];
+      apiKey = existing.apiKey || '';
+      country = existing.country || 'JP';
+    } else {
+      // 新規Gist作成
+      const createRes = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+        body: JSON.stringify({
+          description: '映画ウォッチリスト — 自動同期データ',
+          public: false,
+          files: { [GIST_FILENAME]: { content: '{}' } }
+        })
+      });
+      gistId = (await createRes.json()).id;
+    }
+
+    // 重複を除いてマージ（ローカルデータを優先）
+    const existingIds = new Set(existingMovies.map(m => m.tmdbId));
+    const newMovies = movies.filter(m => !existingIds.has(m.tmdbId));
+    const merged = [...newMovies, ...existingMovies];
+
+    // Gistに保存
+    await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+      body: JSON.stringify({
+        files: {
+          [GIST_FILENAME]: {
+            content: JSON.stringify({ version: 1, movies: merged, apiKey, country }, null, 2)
+          }
+        }
+      })
+    });
+
+    showResult('ok', `✓ ${newMovies.length}件を移行しました！<br><br><a href="https://hanako-yowaiko.github.io/movie-tracker/" style="color:#30d158">→ アプリを開く</a>`);
+  } catch (e) {
+    showResult('error', `エラー: ${e.message}`);
+    btn.disabled = false;
+    btn.textContent = 'クラウドに移行する';
+  }
+});
+
+function showResult(type, html) {
+  const el = document.getElementById('result');
+  el.innerHTML = html;
+  el.className = `result ${type === 'ok' ? 'ok' : 'err'}`;
+  el.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
