@@ -74,16 +74,20 @@
       下のボタンをブラウザの<strong>ブックマークバーにドラッグ</strong>してください。<br>
       （ブックマークバーが見えない場合は <strong>⌘+Shift+B</strong> で表示できます）
     </p>
-    <div style="text-align:center;padding:10px 0 6px">
+    <div style="text-align:center;padding:10px 0 6px;display:flex;flex-direction:column;align-items:center;gap:12px">
       <a id="bookmarklet" href="" class="bookmarklet-link" title="このリンクをブックマークバーにドラッグ">
         🎬 Watchaからエクスポート
       </a>
+      <a id="debugBookmarklet" href="" class="bookmarklet-link" style="background:#636366;font-size:13px;padding:8px 18px" title="うまくいかないときはこちらをドラッグ">
+        🔍 診断（データが0件のとき用）
+      </a>
     </div>
     <div class="note">
-      ① このリンクをブックマークバーへドラッグ<br>
+      ① 上の青いボタンをブックマークバーへドラッグ<br>
       ② <strong>pedia.watcha.com</strong> を開く（ログイン済みの状態で）<br>
       ③ ブックマークバーの「🎬 Watchaからエクスポート」をクリック<br>
-      ④ 自動で <strong>watcha-export.json</strong> がダウンロードされます
+      ④ 自動で <strong>watcha-export.json</strong> がダウンロードされます<br>
+      ⑤ データが0件だった場合は「🔍 診断」ボタンを同様に使ってください
     </div>
   </div>
 
@@ -181,6 +185,25 @@
     alert('完了！\\n評価済み:'+rated.length+'件\\n見たい:'+wished.length+'件\\n\\n件数が0の場合はコンソール(F12)を確認してください');
   }catch(e){alert('エラー: '+e.message+'\\n\\nF12→コンソールで詳細を確認');console.error(e);}})();`;
   document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
+})();
+
+// ========== 診断用ブックマークレット（APIレスポンスをアラートで表示） ==========
+(function(){
+  const code = `(async()=>{try{
+    const show=(label,obj)=>alert(label+'\\n\\n'+JSON.stringify(obj,null,2).slice(0,600));
+    const r=await fetch('/api/users/me',{credentials:'include'});
+    const me=await r.json();
+    show('①/api/users/me のレスポンス',me);
+    const code=me.result?.code||me.result?.user?.code||me.result?.id||me.code||'me';
+    alert('②ユーザーコード: '+code);
+    const r2=await fetch('/api/users/'+code+'/ratings?count=5&mediaType=movie',{credentials:'include'});
+    const d2=await r2.json();
+    show('③評価一覧APIのレスポンス（最初の5件）',d2);
+    const r3=await fetch('/api/users/'+code+'/wishes?count=5&mediaType=movie',{credentials:'include'});
+    const d3=await r3.json();
+    show('④見たい一覧APIのレスポンス（最初の5件）',d3);
+  }catch(e){alert('エラー: '+e.message);}})();`;
+  document.getElementById('debugBookmarklet').href = 'javascript:' + encodeURIComponent(code);
 })();
 
 // ========== GitHubトークン自動入力 ==========
