@@ -9,7 +9,7 @@
     * { box-sizing:border-box; margin:0; padding:0; }
     body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif; padding:24px; }
     .container { max-width:680px; margin:0 auto; }
-    .top-nav { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+    .top-nav { margin-bottom:24px; }
     .back-link { color:var(--accent); text-decoration:none; font-size:14px; }
     .back-link:hover { text-decoration:underline; }
     h1 { font-size:22px; margin-bottom:6px; }
@@ -31,15 +31,19 @@
     .token-hint { font-size:12px; color:var(--success); margin-top:6px; }
     .import-btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
     .import-btn:disabled { opacity:.4; cursor:default; }
+    /* デバッグ表示 */
+    .debug-box { background:#000; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:12px; font-family:monospace; font-size:11px; color:#4ec9b0; max-height:160px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; display:none; }
+    .debug-title { font-size:12px; color:var(--text3); margin-top:10px; margin-bottom:4px; }
+    /* プログレス */
     #progressArea { display:none; margin-top:16px; }
     .progress-bar-wrap { background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; margin:10px 0; }
     .progress-bar { background:var(--accent); height:100%; transition:width .3s; width:0; }
     .progress-text { font-size:13px; color:var(--text2); }
-    .result-list { margin-top:14px; max-height:280px; overflow-y:auto; }
+    .result-list { margin-top:14px; max-height:300px; overflow-y:auto; }
     .result-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .result-item:last-child { border-bottom:none; }
     .result-poster { width:32px; height:48px; object-fit:cover; border-radius:3px; background:var(--surface2); flex-shrink:0; }
-    .tag { font-size:11px; padding:2px 7px; border-radius:3px; font-weight:600; }
+    .tag { font-size:11px; padding:2px 7px; border-radius:3px; font-weight:600; flex-shrink:0; }
     .tag-ok   { background:rgba(48,209,88,.15); color:var(--success); }
     .tag-skip { background:var(--surface2); color:var(--text3); }
     .tag-err  { background:rgba(255,69,58,.15); color:var(--danger); }
@@ -48,6 +52,7 @@
     .bookmarklet-link { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; border-radius:10px; padding:12px 24px; font-size:15px; font-weight:700; cursor:grab; user-select:none; box-shadow:0 2px 12px rgba(10,132,255,.35); transition:opacity .2s; }
     .bookmarklet-link:hover { opacity:.85; }
     .bookmarklet-link:active { cursor:grabbing; }
+    .warn-box { background:#2a1f00; border:1px solid var(--warn); border-radius:8px; padding:12px 14px; font-size:13px; color:var(--warn); margin-top:12px; line-height:1.7; }
   </style>
 </head>
 <body>
@@ -94,6 +99,14 @@
       <div class="upload-label">クリックまたはドラッグ＆ドロップ</div>
       <input type="file" id="fileInput" accept=".json">
     </div>
+
+    <!-- ファイル読み込み後のデバッグ表示 -->
+    <div id="debugArea" style="display:none">
+      <div class="debug-title">📋 ファイル内のデータ確認</div>
+      <div class="debug-box" id="debugBox"></div>
+      <div id="warnBox" class="warn-box" style="display:none"></div>
+    </div>
+
     <div class="token-row">
       <input type="password" class="token-input" id="ghToken" placeholder="GitHubトークン（ghp_...）">
       <button class="import-btn" id="importBtn" disabled onclick="startImport()">インポート開始</button>
@@ -110,17 +123,63 @@
     <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
     <div class="progress-text" id="progressText">準備中...</div>
     <div class="result-list" id="resultList"></div>
-    <div class="summary hidden" id="summary"></div>
-    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="open-btn hidden" id="openBtn">
+    <div class="summary" id="summary" style="display:none"></div>
+    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="open-btn" id="openBtn" style="display:none">
       ✓ ウォッチリストを開く →
     </a>
   </div>
 </div>
 
 <script>
-// ========== ブックマークレット設定 ==========
+// ========== ブックマークレット（改良版・複数APIパターン対応） ==========
 (function(){
-  const code = `(async()=>{try{const me=await fetch('/api/users/me',{credentials:'include'}).then(r=>r.json());const code=me.result?.code||me.result?.id||'me';const collect=async(url)=>{const all=[];let page=1;while(true){const r=await fetch(url+'&page='+page,{credentials:'include'});if(!r.ok)break;const d=await r.json();const items=d.result??d.items??[];if(!items.length)break;all.push(...items);if(items.length<40)break;page++;}return all;};const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),rated,wished},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='watcha-export.json';document.body.appendChild(a);a.click();a.remove();alert('完了！評価'+rated.length+'件 + 見たい'+wished.length+'件');}catch(e){alert('エラー: '+e.message);}})();`;
+  const code = `(async()=>{try{
+    // ユーザー情報取得
+    const meRes=await fetch('/api/users/me',{credentials:'include'});
+    if(!meRes.ok){alert('ログインしてください（ステータス:'+meRes.status+')');return;}
+    const me=await meRes.json();
+    const code=me.result?.code||me.result?.user?.code||me.result?.id||me.code||'me';
+    console.log('Watchaユーザーコード:',code,'レスポンス:',JSON.stringify(me).slice(0,200));
+
+    // ページネーション付きデータ取得（複数レスポンス形式に対応）
+    const collect=async(url)=>{
+      const all=[];let page=1;
+      while(true){
+        const r=await fetch(url+'&page='+page,{credentials:'include'});
+        if(!r.ok){console.warn('fetch失敗',url,r.status);break;}
+        const d=await r.json();
+        // レスポンスの形式を自動判定
+        const items=Array.isArray(d.result)?d.result
+          :Array.isArray(d.result?.items)?d.result.items
+          :Array.isArray(d.result?.records)?d.result.records
+          :Array.isArray(d.items)?d.items
+          :Array.isArray(d.records)?d.records
+          :Array.isArray(d.data)?d.data
+          :Array.isArray(d)?d:[];
+        console.log('取得:',url,'page:'+page,'件数:'+items.length,'キー例:',Object.keys(d));
+        if(!items.length)break;
+        all.push(...items);
+        if(items.length<40)break;
+        page++;
+      }
+      return all;
+    };
+
+    // 評価済み映画
+    const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');
+    // 見たい映画
+    const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');
+
+    const exportData={exportedAt:new Date().toISOString(),userCode:code,rated,wished};
+    console.log('エクスポートデータ:',JSON.stringify(exportData).slice(0,500));
+
+    const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='watcha-export.json';
+    document.body.appendChild(a);a.click();a.remove();
+    alert('完了！\\n評価済み:'+rated.length+'件\\n見たい:'+wished.length+'件\\n\\n件数が0の場合はコンソール(F12)を確認してください');
+  }catch(e){alert('エラー: '+e.message+'\\n\\nF12→コンソールで詳細を確認');console.error(e);}})();`;
   document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
 })();
 
@@ -138,6 +197,7 @@
 const GIST_FILENAME = 'movie-watchlist.json';
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
 let watchaData = null;
+let parsedMovies = [];  // 正規化済みリスト
 let tmdbApiKey = '';
 let gistId = '';
 
@@ -159,11 +219,52 @@ function loadFile(file) {
   reader.onload = e => {
     try {
       watchaData = JSON.parse(e.target.result);
-      uploadArea.innerHTML = `<div class="upload-icon">✅</div><div class="upload-label">${file.name}（評価${watchaData.rated?.length||0}件 + 見たい${watchaData.wished?.length||0}件）</div>`;
+      analyzeData(file.name);
       checkReady();
-    } catch { alert('JSONファイルの読み込みに失敗しました'); }
+    } catch(err) {
+      alert('JSONファイルの読み込みに失敗しました: ' + err.message);
+    }
   };
   reader.readAsText(file);
+}
+
+// ファイル内容を解析してユーザーに表示
+function analyzeData(filename) {
+  const rated  = watchaData.rated  || [];
+  const wished = watchaData.wished || [];
+  const total  = rated.length + wished.length;
+
+  uploadArea.innerHTML = `<div class="upload-icon">✅</div><div class="upload-label">
+    ${esc(filename)}<br>
+    評価済み: <strong>${rated.length}件</strong> ／ 見たい: <strong>${wished.length}件</strong> （合計 ${total}件）
+  </div>`;
+
+  // デバッグ情報表示
+  document.getElementById('debugArea').style.display = 'block';
+  const debugBox = document.getElementById('debugBox');
+  const warnBox  = document.getElementById('warnBox');
+
+  // サンプルデータの構造を表示
+  const sample = rated[0] || wished[0];
+  if (sample) {
+    debugBox.style.display = 'block';
+    debugBox.textContent = '最初のアイテムの構造:\n' + JSON.stringify(sample, null, 2).slice(0, 800);
+  }
+
+  // 警告チェック
+  if (total === 0) {
+    warnBox.style.display = 'block';
+    warnBox.innerHTML = '⚠️ データが0件です。<br>ブックマークレットをもう一度実行して、アラートに表示される件数を確認してください。<br>0件の場合はWatchaにログインし直してから試してください。';
+  } else {
+    warnBox.style.display = 'none';
+
+    // タイトルが取得できるか確認
+    const titleOk  = getTitle(sample) !== '不明';
+    if (!titleOk) {
+      warnBox.style.display = 'block';
+      warnBox.innerHTML = '⚠️ タイトルのフィールドが想定と異なります。上のJSON構造を確認して、どのキーにタイトルが入っているかご確認ください。';
+    }
+  }
 }
 
 function checkReady() {
@@ -184,7 +285,7 @@ async function startImport() {
     setProgress(0, 'GitHubに接続中...');
     const gistList = await ghFetch('/gists?per_page=100', token);
     const foundGist = gistList.find(g => g.files[GIST_FILENAME]);
-    if (!foundGist) { throw new Error('ウォッチリストのGistが見つかりません。先にメインアプリでセットアップしてください。'); }
+    if (!foundGist) throw new Error('ウォッチリストのGistが見つかりません。先にメインアプリでセットアップしてください。');
 
     gistId = foundGist.id;
     const gistDetail = await ghFetch(`/gists/${gistId}`, token);
@@ -193,53 +294,57 @@ async function startImport() {
     const existingMovies = existing.movies || [];
     const existingTmdbIds = new Set(existingMovies.map(m => m.tmdbId));
 
+    if (!tmdbApiKey) {
+      throw new Error('TMDB APIキーが設定されていません。先にメインアプリの設定でAPIキーを登録してください。');
+    }
+
     // 処理対象をまとめる
-    const rated  = watchaData.rated  || [];
-    const wished = watchaData.wished || [];
     const all = [
-      ...rated.map(m  => ({...m, _status:'watched'})),
-      ...wished.map(m => ({...m, _status:'watchlist'})),
+      ...(watchaData.rated  || []).map(m => ({...m, _status:'watched'})),
+      ...(watchaData.wished || []).map(m => ({...m, _status:'watchlist'})),
     ];
 
     setProgress(5, `${all.length}件を処理します...`);
 
     const newMovies = [];
     const resultList = document.getElementById('resultList');
-    let skipCount = 0, errCount = 0;
+    let skipCount = 0, errCount = 0, notFoundCount = 0;
 
     for (let i = 0; i < all.length; i++) {
       const item = all[i];
       const pct  = 5 + Math.round((i / all.length) * 85);
-      const titleJa  = getTitle(item);
-      const titleEn  = getTitleEn(item);
-      const year     = getYear(item);
-      setProgress(pct, `検索中: ${titleJa} (${i+1}/${all.length})`);
-
-      if (!tmdbApiKey) { addResult(resultList, null, titleJa, 'skip', 'APIキーなし'); skipCount++; continue; }
+      const titleJa = getTitle(item);
+      const titleEn = getTitleEn(item);
+      const year    = getYear(item);
+      setProgress(pct, `(${i+1}/${all.length}) ${titleJa}`);
 
       try {
-        // 1. まず日本語タイトル＋年で検索
-        let tmdbResult = await searchTMDB(titleJa, year);
-        // 2. 見つからなければ年なしで再検索
-        if (!tmdbResult && year) tmdbResult = await searchTMDB(titleJa, '');
-        // 3. それでもなければ英語タイトルで検索
-        if (!tmdbResult && titleEn && titleEn !== titleJa) tmdbResult = await searchTMDB(titleEn, year);
-        // 4. 英語タイトル＋年なし
-        if (!tmdbResult && titleEn && titleEn !== titleJa) tmdbResult = await searchTMDB(titleEn, '');
+        // 4段階フォールバック検索
+        let hit = await searchTMDB(titleJa, year);
+        if (!hit && year)                         hit = await searchTMDB(titleJa, '');
+        if (!hit && titleEn && titleEn !== titleJa) hit = await searchTMDB(titleEn, year);
+        if (!hit && titleEn && titleEn !== titleJa) hit = await searchTMDB(titleEn, '');
 
-        if (!tmdbResult) { addResult(resultList, null, titleJa, 'skip', '見つからず'); skipCount++; continue; }
-        if (existingTmdbIds.has(tmdbResult.id)) { addResult(resultList, tmdbResult.poster_path, titleJa, 'skip', '追加済み'); skipCount++; continue; }
+        if (!hit) {
+          addResult(resultList, null, titleJa, 'skip', '見つからず');
+          notFoundCount++; continue;
+        }
+        if (existingTmdbIds.has(hit.id)) {
+          addResult(resultList, hit.poster_path, titleJa, 'skip', '追加済み');
+          skipCount++; continue;
+        }
 
+        const stars = toStars(item.star);
         const movie = {
           id:            `m_${Date.now()}_${i}`,
-          tmdbId:        tmdbResult.id,
-          title:         tmdbResult.title || tmdbResult.original_title,
-          originalTitle: tmdbResult.original_title,
-          year:          (tmdbResult.release_date||'').slice(0,4)||year||'?',
-          posterPath:    tmdbResult.poster_path || null,
-          overview:      tmdbResult.overview || '',
+          tmdbId:        hit.id,
+          title:         hit.title || hit.original_title,
+          originalTitle: hit.original_title,
+          year:          (hit.release_date||'').slice(0,4) || year || '?',
+          posterPath:    hit.poster_path || null,
+          overview:      hit.overview || '',
           status:        item._status,
-          rating:        toStars(item.star),
+          rating:        stars,
           tags:          [],
           onPrime:       false,
           primeDetected: false,
@@ -247,61 +352,74 @@ async function startImport() {
           addedAt:       new Date().toISOString(),
         };
         newMovies.push(movie);
-        existingTmdbIds.add(tmdbResult.id);
-        addResult(resultList, tmdbResult.poster_path, movie.title, 'ok',
-          movie.status==='watched' ? (movie.rating ? '★'.repeat(movie.rating) : '視聴済み') : '見たい');
+        existingTmdbIds.add(hit.id);
+        addResult(resultList, hit.poster_path, movie.title, 'ok',
+          item._status === 'watched' ? (stars ? '★'.repeat(stars) : '視聴済み') : '見たい');
       } catch(e) {
         addResult(resultList, null, titleJa, 'err', e.message);
         errCount++;
       }
 
-      await sleep(250); // TMDBレート制限対策
+      await sleep(260);
     }
 
     // Gistに保存
-    setProgress(92, 'クラウドに保存中...');
+    setProgress(93, 'クラウドに保存中...');
     const merged = [...newMovies, ...existingMovies];
     await ghPatch(gistId, token, { movies: merged, apiKey: tmdbApiKey, country: existing.country || 'JP' });
 
     setProgress(100, '完了！');
     document.getElementById('progressTitle').textContent = 'インポート完了 🎉';
+    document.getElementById('summary').style.display = 'block';
     document.getElementById('summary').innerHTML =
-      `✅ <strong>${newMovies.length}件</strong>を追加しました<br>` +
-      `スキップ: ${skipCount}件　エラー: ${errCount}件`;
-    document.getElementById('summary').classList.remove('hidden');
-    document.getElementById('openBtn').classList.remove('hidden');
+      `✅ <strong>${newMovies.length}件</strong>を新規追加<br>` +
+      `追加済みでスキップ: ${skipCount}件<br>` +
+      `TMDBで見つからず: ${notFoundCount}件<br>` +
+      (errCount ? `エラー: ${errCount}件<br>` : '');
+    document.getElementById('openBtn').style.display = 'block';
 
   } catch(e) {
-    setProgress(0, `❌ エラー: ${e.message}`);
+    setProgress(0, `❌ ${e.message}`);
     importBtn.disabled = false;
   }
 }
 
-// ========== ユーティリティ ==========
+// ========== タイトル取得（Watchaの複数パターン対応） ==========
 function getTitle(item) {
-  // Watchaのデータ構造パターンに対応
-  return item.content?.title ||
-         item.content?.titleKo ||
-         item.title ||
-         item.content?.titleEn ||
-         item.titleEn ||
-         '不明';
+  return item.content?.title        // 日本語タイトルが入ることが多い
+      || item.content?.titleKo      // 韓国語タイトル
+      || item.content?.titleJa
+      || item.content?.localTitle
+      || item.title
+      || item.content?.titleEn      // 英語（最終手段）
+      || item.titleEn
+      || item.content?.originalTitle
+      || item.originalTitle
+      || '不明';
 }
 function getTitleEn(item) {
-  return item.content?.titleEn || item.titleEn || '';
+  return item.content?.titleEn
+      || item.content?.originalTitle
+      || item.titleEn
+      || item.originalTitle
+      || '';
 }
 function getYear(item) {
-  const y = item.content?.year || item.year || '';
+  const y = item.content?.year || item.content?.releaseYear || item.year || '';
   return y ? String(y) : '';
 }
 function toStars(star) {
   if (!star) return 0;
-  return Math.min(5, Math.round(star / 2)); // Watchaは10点満点 → 5点換算
+  return Math.min(5, Math.round(star / 2));
 }
 
+// ========== TMDB検索 ==========
 async function searchTMDB(title, year) {
   if (!title || title === '不明') return null;
-  const params = new URLSearchParams({ api_key: tmdbApiKey, query: title, language: 'ja-JP', include_adult: 'false' });
+  const params = new URLSearchParams({
+    api_key: tmdbApiKey, query: title,
+    language: 'ja-JP', include_adult: 'false'
+  });
   if (year) params.set('year', year);
   const res = await fetch(`https://api.themoviedb.org/3/search/movie?${params}`);
   if (!res.ok) throw new Error(`TMDB ${res.status}`);
@@ -309,6 +427,7 @@ async function searchTMDB(title, year) {
   return d.results?.[0] || null;
 }
 
+// ========== GitHub API ==========
 async function ghFetch(path, token, opts={}) {
   const res = await fetch(`https://api.github.com${path}`, {
     ...opts,
@@ -317,7 +436,6 @@ async function ghFetch(path, token, opts={}) {
   if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.message || `GitHub ${res.status}`); }
   return res.json();
 }
-
 async function ghPatch(gistId, token, data) {
   return ghFetch(`/gists/${gistId}`, token, {
     method: 'PATCH',
@@ -325,21 +443,20 @@ async function ghPatch(gistId, token, data) {
   });
 }
 
+// ========== UI ==========
 function setProgress(pct, text) {
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressText').textContent = text;
 }
-
 function addResult(container, poster, title, type, note) {
   const el = document.createElement('div');
   el.className = 'result-item';
   el.innerHTML = `
     <img class="result-poster" src="${poster ? TMDB_IMG+poster : ''}" onerror="this.style.visibility='hidden'">
     <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</div>
-    <span class="tag tag-${type}">${note}</span>`;
+    <span class="tag tag-${type}">${esc(note)}</span>`;
   container.prepend(el);
 }
-
 function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 </script>
