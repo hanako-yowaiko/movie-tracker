@@ -779,6 +779,14 @@ a:hover { text-decoration: underline; }
 .qr-img { width: 200px; height: 200px; border-radius: var(--radius); background: #fff; padding: 8px; }
 .qr-note { font-size: 11px; color: var(--expiring); margin-top: 8px; }
 .settings-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.import-link-btn {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 14px;
+  text-decoration: none;
+  padding: 6px 0;
+}
+.import-link-btn:hover { text-decoration: underline; }
 
 /* Toast */
 .toast {

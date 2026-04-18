@@ -9,6 +9,9 @@
     * { box-sizing:border-box; margin:0; padding:0; }
     body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif; padding:24px; }
     .container { max-width:680px; margin:0 auto; }
+    .top-nav { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+    .back-link { color:var(--accent); text-decoration:none; font-size:14px; }
+    .back-link:hover { text-decoration:underline; }
     h1 { font-size:22px; margin-bottom:6px; }
     .subtitle { color:var(--text2); font-size:14px; margin-bottom:32px; }
     .step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px; margin-bottom:16px; }
@@ -16,10 +19,7 @@
     .step-num { background:var(--accent); color:#fff; font-size:13px; font-weight:700; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .step-title { font-size:16px; font-weight:600; }
     .step-desc { color:var(--text2); font-size:13px; line-height:1.7; margin-bottom:14px; }
-    .code-block { background:#000; border:1px solid var(--border); border-radius:8px; padding:14px; font-family:monospace; font-size:12px; color:#4ec9b0; line-height:1.6; overflow-x:auto; white-space:pre; position:relative; }
-    .copy-btn { position:absolute; top:8px; right:8px; background:var(--surface2); border:1px solid var(--border); color:var(--text2); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
-    .copy-btn:hover { color:var(--text); }
-    .note { background:var(--surface2); border-left:3px solid var(--warn); border-radius:4px; padding:10px 14px; font-size:13px; color:var(--text2); margin-top:12px; }
+    .note { background:var(--surface2); border-left:3px solid var(--warn); border-radius:4px; padding:10px 14px; font-size:13px; color:var(--text2); margin-top:12px; line-height:1.8; }
     .upload-area { border:2px dashed var(--border); border-radius:10px; padding:28px; text-align:center; cursor:pointer; transition:border-color .2s; }
     .upload-area:hover, .upload-area.drag { border-color:var(--accent); }
     .upload-icon { font-size:36px; margin-bottom:8px; }
@@ -28,6 +28,7 @@
     .token-row { display:flex; gap:10px; margin-top:14px; }
     .token-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:10px 12px; font-size:14px; outline:none; }
     .token-input:focus { border-color:var(--accent); }
+    .token-hint { font-size:12px; color:var(--success); margin-top:6px; }
     .import-btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
     .import-btn:disabled { opacity:.4; cursor:default; }
     #progressArea { display:none; margin-top:16px; }
@@ -51,6 +52,10 @@
 </head>
 <body>
 <div class="container">
+  <div class="top-nav">
+    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="back-link">← ウォッチリストに戻る</a>
+  </div>
+
   <h1>🎬 Watcha Pedia → ウォッチリスト インポート</h1>
   <p class="subtitle">Watcha Pediaの評価・見たい映画リストをインポートします</p>
 
@@ -69,7 +74,7 @@
         🎬 Watchaからエクスポート
       </a>
     </div>
-    <div class="note" style="margin-top:10px">
+    <div class="note">
       ① このリンクをブックマークバーへドラッグ<br>
       ② <strong>pedia.watcha.com</strong> を開く（ログイン済みの状態で）<br>
       ③ ブックマークバーの「🎬 Watchaからエクスポート」をクリック<br>
@@ -93,13 +98,14 @@
       <input type="password" class="token-input" id="ghToken" placeholder="GitHubトークン（ghp_...）">
       <button class="import-btn" id="importBtn" disabled onclick="startImport()">インポート開始</button>
     </div>
+    <div id="tokenHint" class="token-hint" style="display:none">✓ ウォッチリストのトークンを自動入力しました</div>
   </div>
 
   <!-- Progress -->
   <div id="progressArea" class="step">
     <div class="step-header">
       <div class="step-num">3</div>
-      <div class="step-title">インポート中...</div>
+      <div class="step-title" id="progressTitle">インポート中...</div>
     </div>
     <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
     <div class="progress-text" id="progressText">準備中...</div>
@@ -112,18 +118,30 @@
 </div>
 
 <script>
-// ブックマークレットのhrefを設定
+// ========== ブックマークレット設定 ==========
 (function(){
-  const code = `(async()=>{const me=await fetch('/api/users/me',{credentials:'include'}).then(r=>r.json());const code=me.result?.code||me.result?.id||'me';const collect=async(url)=>{const all=[];let page=1;while(true){const r=await fetch(url+'&page='+page,{credentials:'include'});if(!r.ok)break;const d=await r.json();const items=d.result??d.items??[];if(!items.length)break;all.push(...items);if(items.length<40)break;page++;}return all;};const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),rated,wished},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='watcha-export.json';document.body.appendChild(a);a.click();a.remove();alert('完了！評価'+rated.length+'件 + 見たい'+wished.length+'件');})();`;
+  const code = `(async()=>{try{const me=await fetch('/api/users/me',{credentials:'include'}).then(r=>r.json());const code=me.result?.code||me.result?.id||'me';const collect=async(url)=>{const all=[];let page=1;while(true){const r=await fetch(url+'&page='+page,{credentials:'include'});if(!r.ok)break;const d=await r.json();const items=d.result??d.items??[];if(!items.length)break;all.push(...items);if(items.length<40)break;page++;}return all;};const rated=await collect('/api/users/'+code+'/ratings?count=40&mediaType=movie');const wished=await collect('/api/users/'+code+'/wishes?count=40&mediaType=movie');const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),rated,wished},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='watcha-export.json';document.body.appendChild(a);a.click();a.remove();alert('完了！評価'+rated.length+'件 + 見たい'+wished.length+'件');}catch(e){alert('エラー: '+e.message);}})();`;
   document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
 })();
 
+// ========== GitHubトークン自動入力 ==========
+(function(){
+  const saved = localStorage.getItem('mw_ghtoken');
+  if (saved) {
+    document.getElementById('ghToken').value = saved;
+    document.getElementById('tokenHint').style.display = 'block';
+    checkReady();
+  }
+})();
+
+// ========== 定数 ==========
 const GIST_FILENAME = 'movie-watchlist.json';
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
 let watchaData = null;
 let tmdbApiKey = '';
+let gistId = '';
 
-// --- ファイル読み込み ---
+// ========== ファイル読み込み ==========
 const fileInput = document.getElementById('fileInput');
 const uploadArea = document.getElementById('uploadArea');
 const ghTokenInput = document.getElementById('ghToken');
@@ -141,7 +159,6 @@ function loadFile(file) {
   reader.onload = e => {
     try {
       watchaData = JSON.parse(e.target.result);
-      const total = (watchaData.rated?.length||0) + (watchaData.wished?.length||0);
       uploadArea.innerHTML = `<div class="upload-icon">✅</div><div class="upload-label">${file.name}（評価${watchaData.rated?.length||0}件 + 見たい${watchaData.wished?.length||0}件）</div>`;
       checkReady();
     } catch { alert('JSONファイルの読み込みに失敗しました'); }
@@ -153,17 +170,7 @@ function checkReady() {
   importBtn.disabled = !(watchaData && ghTokenInput.value.trim());
 }
 
-// --- コードコピー ---
-function copyCode() {
-  const code = document.getElementById('codeBlock').innerText;
-  navigator.clipboard.writeText(code).then(() => {
-    const btn = document.querySelector('.copy-btn');
-    btn.textContent = 'コピーしました！';
-    setTimeout(() => btn.textContent = 'コピー', 2000);
-  });
-}
-
-// --- インポート処理 ---
+// ========== インポート処理 ==========
 async function startImport() {
   const token = ghTokenInput.value.trim();
   if (!watchaData || !token) return;
@@ -175,11 +182,12 @@ async function startImport() {
   try {
     // Gist接続
     setProgress(0, 'GitHubに接続中...');
-    const gistRes = await ghFetch('/gists?per_page=100', token);
-    const found = gistRes.find(g => g.files[GIST_FILENAME]);
-    if (!found) { throw new Error('ウォッチリストのGistが見つかりません。先にメインアプリでセットアップしてください。'); }
+    const gistList = await ghFetch('/gists?per_page=100', token);
+    const foundGist = gistList.find(g => g.files[GIST_FILENAME]);
+    if (!foundGist) { throw new Error('ウォッチリストのGistが見つかりません。先にメインアプリでセットアップしてください。'); }
 
-    const gistDetail = await ghFetch(`/gists/${found.id}`, token);
+    gistId = foundGist.id;
+    const gistDetail = await ghFetch(`/gists/${gistId}`, token);
     const existing = JSON.parse(gistDetail.files[GIST_FILENAME]?.content || '{}');
     tmdbApiKey = existing.apiKey || '';
     const existingMovies = existing.movies || [];
@@ -197,29 +205,39 @@ async function startImport() {
 
     const newMovies = [];
     const resultList = document.getElementById('resultList');
+    let skipCount = 0, errCount = 0;
 
     for (let i = 0; i < all.length; i++) {
       const item = all[i];
       const pct  = 5 + Math.round((i / all.length) * 85);
-      const title = getTitle(item);
-      const year  = getYear(item);
-      setProgress(pct, `検索中: ${title} (${i+1}/${all.length})`);
+      const titleJa  = getTitle(item);
+      const titleEn  = getTitleEn(item);
+      const year     = getYear(item);
+      setProgress(pct, `検索中: ${titleJa} (${i+1}/${all.length})`);
 
-      if (!tmdbApiKey) { addResult(resultList, null, title, 'skip', 'APIキーなし'); continue; }
+      if (!tmdbApiKey) { addResult(resultList, null, titleJa, 'skip', 'APIキーなし'); skipCount++; continue; }
 
       try {
-        const found = await searchTMDB(title, year);
-        if (!found) { addResult(resultList, null, title, 'skip', '見つからず'); continue; }
-        if (existingTmdbIds.has(found.id)) { addResult(resultList, found.poster_path, title, 'skip', '追加済み'); continue; }
+        // 1. まず日本語タイトル＋年で検索
+        let tmdbResult = await searchTMDB(titleJa, year);
+        // 2. 見つからなければ年なしで再検索
+        if (!tmdbResult && year) tmdbResult = await searchTMDB(titleJa, '');
+        // 3. それでもなければ英語タイトルで検索
+        if (!tmdbResult && titleEn && titleEn !== titleJa) tmdbResult = await searchTMDB(titleEn, year);
+        // 4. 英語タイトル＋年なし
+        if (!tmdbResult && titleEn && titleEn !== titleJa) tmdbResult = await searchTMDB(titleEn, '');
+
+        if (!tmdbResult) { addResult(resultList, null, titleJa, 'skip', '見つからず'); skipCount++; continue; }
+        if (existingTmdbIds.has(tmdbResult.id)) { addResult(resultList, tmdbResult.poster_path, titleJa, 'skip', '追加済み'); skipCount++; continue; }
 
         const movie = {
           id:            `m_${Date.now()}_${i}`,
-          tmdbId:        found.id,
-          title:         found.title || found.original_title,
-          originalTitle: found.original_title,
-          year:          (found.release_date||'').slice(0,4)||year||'?',
-          posterPath:    found.poster_path || null,
-          overview:      found.overview || '',
+          tmdbId:        tmdbResult.id,
+          title:         tmdbResult.title || tmdbResult.original_title,
+          originalTitle: tmdbResult.original_title,
+          year:          (tmdbResult.release_date||'').slice(0,4)||year||'?',
+          posterPath:    tmdbResult.poster_path || null,
+          overview:      tmdbResult.overview || '',
           status:        item._status,
           rating:        toStars(item.star),
           tags:          [],
@@ -229,10 +247,12 @@ async function startImport() {
           addedAt:       new Date().toISOString(),
         };
         newMovies.push(movie);
-        existingTmdbIds.add(found.id);
-        addResult(resultList, found.poster_path, movie.title, 'ok', movie.status==='watched'?'★'.repeat(movie.rating)||'視聴済み':'見たい');
+        existingTmdbIds.add(tmdbResult.id);
+        addResult(resultList, tmdbResult.poster_path, movie.title, 'ok',
+          movie.status==='watched' ? (movie.rating ? '★'.repeat(movie.rating) : '視聴済み') : '見たい');
       } catch(e) {
-        addResult(resultList, null, title, 'err', e.message);
+        addResult(resultList, null, titleJa, 'err', e.message);
+        errCount++;
       }
 
       await sleep(250); // TMDBレート制限対策
@@ -241,23 +261,34 @@ async function startImport() {
     // Gistに保存
     setProgress(92, 'クラウドに保存中...');
     const merged = [...newMovies, ...existingMovies];
-    await ghPatch(found.id, token, { movies: merged, apiKey: tmdbApiKey, country: existing.country || 'JP' });
+    await ghPatch(gistId, token, { movies: merged, apiKey: tmdbApiKey, country: existing.country || 'JP' });
 
     setProgress(100, '完了！');
+    document.getElementById('progressTitle').textContent = 'インポート完了 🎉';
     document.getElementById('summary').innerHTML =
-      `✅ <strong>${newMovies.length}件</strong>を追加しました（スキップ: ${all.length - newMovies.length}件）`;
+      `✅ <strong>${newMovies.length}件</strong>を追加しました<br>` +
+      `スキップ: ${skipCount}件　エラー: ${errCount}件`;
     document.getElementById('summary').classList.remove('hidden');
     document.getElementById('openBtn').classList.remove('hidden');
 
   } catch(e) {
-    setProgress(0, `エラー: ${e.message}`);
+    setProgress(0, `❌ エラー: ${e.message}`);
     importBtn.disabled = false;
   }
 }
 
-// --- ユーティリティ ---
+// ========== ユーティリティ ==========
 function getTitle(item) {
-  return item.content?.title || item.content?.titleEn || item.title || item.titleEn || '不明';
+  // Watchaのデータ構造パターンに対応
+  return item.content?.title ||
+         item.content?.titleKo ||
+         item.title ||
+         item.content?.titleEn ||
+         item.titleEn ||
+         '不明';
+}
+function getTitleEn(item) {
+  return item.content?.titleEn || item.titleEn || '';
 }
 function getYear(item) {
   const y = item.content?.year || item.year || '';
@@ -265,13 +296,15 @@ function getYear(item) {
 }
 function toStars(star) {
   if (!star) return 0;
-  return Math.round(star / 2); // Watchaは10点満点、うちは5点
+  return Math.min(5, Math.round(star / 2)); // Watchaは10点満点 → 5点換算
 }
 
 async function searchTMDB(title, year) {
-  const params = new URLSearchParams({ api_key: tmdbApiKey, query: title, language: 'ja-JP' });
+  if (!title || title === '不明') return null;
+  const params = new URLSearchParams({ api_key: tmdbApiKey, query: title, language: 'ja-JP', include_adult: 'false' });
   if (year) params.set('year', year);
   const res = await fetch(`https://api.themoviedb.org/3/search/movie?${params}`);
+  if (!res.ok) throw new Error(`TMDB ${res.status}`);
   const d = await res.json();
   return d.results?.[0] || null;
 }
@@ -302,11 +335,12 @@ function addResult(container, poster, title, type, note) {
   el.className = 'result-item';
   el.innerHTML = `
     <img class="result-poster" src="${poster ? TMDB_IMG+poster : ''}" onerror="this.style.visibility='hidden'">
-    <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>
+    <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</div>
     <span class="tag tag-${type}">${note}</span>`;
   container.prepend(el);
 }
 
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 </script>
 </body>
