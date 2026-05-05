@@ -15,6 +15,12 @@ const PRESET_TAGS = [
 
 const PRIME_IDS = new Set([9, 10, 119]);
 
+const PRESET_TAGS_BOOKS = [
+  '小説', 'エッセイ', 'ビジネス', '自己啓発', '歴史', 'SF',
+  'ミステリー', '恋愛', 'ホラー', '哲学', '科学', '伝記',
+  '料理', '旅行', 'コミック', 'ノンフィクション',
+];
+
 /* ============================================================
    State
    ============================================================ */
@@ -32,6 +38,14 @@ const state = {
   editId:      null,
   editTags:    [],
   editRating:  0,
+  // 本管理
+  books:       [],
+  mode:        'movies',   // 'movies' | 'books'
+  bookFilter:  'all',
+  bookSort:    'added',
+  editBookId:  null,
+  editBookTags:[],
+  editBookRating: 0,
 };
 
 /* ============================================================
@@ -99,6 +113,7 @@ async function loadFromGist() {
   if (!raw) return;
   const data    = JSON.parse(raw);
   state.movies  = data.movies  || [];
+  state.books   = data.books   || [];
   state.apiKey  = data.apiKey  || '';
   state.country = data.country || 'JP';
 }
@@ -124,6 +139,7 @@ async function flushSave() {
             content: JSON.stringify({
               version: 1,
               movies:  state.movies,
+              books:   state.books,
               apiKey:  state.apiKey,
               country: state.country,
             }, null, 2),
@@ -233,6 +249,271 @@ function deleteMovie(id) {
 }
 
 /* ============================================================
+   Google Books API
+   ============================================================ */
+let lastBookResults = [];
+
+async function searchGoogleBooks(q) {
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=10&printType=books`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Google Books ${res.status}`);
+  const d = await res.json();
+  return d.items || [];
+}
+
+function gbCoverSrc(item) {
+  const links = item?.volumeInfo?.imageLinks;
+  if (!links) return '';
+  return (links.thumbnail || links.smallThumbnail || '').replace('http://', 'https://');
+}
+
+/* ============================================================
+   Book Operations
+   ============================================================ */
+function isBookAdded(gbId) { return state.books.some(b => b.googleBooksId === gbId); }
+
+async function addBook(gbItem) {
+  if (isBookAdded(gbItem.id)) { toast('すでにリストに追加されています'); return; }
+  const vi = gbItem.volumeInfo || {};
+  const book = {
+    id:            `b_${Date.now()}`,
+    googleBooksId: gbItem.id,
+    title:         vi.title || '不明',
+    authors:       vi.authors || [],
+    publisher:     vi.publisher || '',
+    year:          (vi.publishedDate || '').slice(0, 4),
+    coverPath:     gbCoverSrc(gbItem),
+    description:   vi.description || '',
+    status:        'readlist',
+    rating:        0,
+    tags:          [],
+    addedAt:       new Date().toISOString(),
+  };
+  state.books.unshift(book);
+  scheduleSave();
+  renderAll();
+  toast(`「${book.title}」を追加しました`);
+}
+
+function updateBook(id, changes) {
+  const idx = state.books.findIndex(b => b.id === id);
+  if (idx !== -1) { state.books[idx] = { ...state.books[idx], ...changes }; scheduleSave(); }
+}
+
+function deleteBook(id) {
+  const b = state.books.find(x => x.id === id);
+  state.books = state.books.filter(x => x.id !== id);
+  scheduleSave(); renderAll();
+  if (b) toast(`「${b.title}」を削除しました`);
+}
+
+/* ============================================================
+   Book Filter & Sort
+   ============================================================ */
+function filteredBooks() {
+  let list = [...state.books];
+  switch (state.bookFilter) {
+    case 'readlist': list = list.filter(b => b.status === 'readlist'); break;
+    case 'read':     list = list.filter(b => b.status === 'read');     break;
+  }
+  switch (state.bookSort) {
+    case 'title':  list.sort((a, b) => a.title.localeCompare(b.title, 'ja')); break;
+    case 'year':   list.sort((a, b) => (b.year || 0) - (a.year || 0));        break;
+    case 'rating': list.sort((a, b) => b.rating - a.rating);                  break;
+    default:       list.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt));
+  }
+  return list;
+}
+
+function bookCounts() {
+  return {
+    all:      state.books.length,
+    readlist: state.books.filter(b => b.status === 'readlist').length,
+    read:     state.books.filter(b => b.status === 'read').length,
+  };
+}
+
+/* ============================================================
+   Book Rendering
+   ============================================================ */
+function bookCardHTML(b) {
+  const stars = b.status === 'read' && b.rating > 0
+    ? `<span class="card-stars">${'★'.repeat(b.rating)}${'☆'.repeat(5 - b.rating)}</span>` : '';
+  const cover = b.coverPath
+    ? `<img class="card-poster-img" src="${esc(b.coverPath)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="card-no-poster">📚</div>`;
+  const topBadge = b.status === 'read' ? `<span class="badge b-read">✓</span>` : '';
+  const authorsStr = (b.authors || []).slice(0, 1).join(', ');
+  const tagsHtml = (b.tags || []).slice(0, 2).map(t => `<span class="tag-chip">${esc(t)}</span>`).join('');
+  return `
+    <div class="movie-card book-card" data-book-id="${b.id}">
+      <div class="card-poster-wrap">
+        ${cover}
+        <div class="card-overlay">
+          <div class="card-top">${topBadge}</div>
+          <div class="card-bottom"></div>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-title">${esc(b.title)}</div>
+        <div class="card-meta"><span class="card-year">${esc(authorsStr) || b.year || ''}</span>${stars}</div>
+        ${tagsHtml ? `<div class="card-tags">${tagsHtml}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function bookSearchItemHTML(item) {
+  const vi = item.volumeInfo || {};
+  const added = isBookAdded(item.id);
+  const authors = (vi.authors || []).slice(0, 2).join(', ');
+  const year = (vi.publishedDate || '').slice(0, 4);
+  const cover = gbCoverSrc(item);
+  return `
+    <div class="search-item">
+      <img class="search-item-poster" src="${esc(cover)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="search-item-info">
+        <div class="search-item-title">${esc(vi.title || '')}</div>
+        <div class="search-item-year">${esc(authors)}${year ? ` (${year})` : ''}</div>
+        <div class="search-item-overview">${esc(vi.description || '')}</div>
+      </div>
+      <button class="search-item-add" data-gbook-id="${esc(item.id)}" ${added ? 'disabled' : ''}>
+        ${added ? '追加済み' : '追加'}
+      </button>
+    </div>`;
+}
+
+/* ============================================================
+   Book Detail Modal
+   ============================================================ */
+function openBookDetail(id) {
+  const b = state.books.find(x => x.id === id);
+  if (!b) return;
+  state.editBookId = id;
+  state.editBookTags = [...(b.tags || [])];
+  state.editBookRating = b.rating;
+
+  const cover   = document.getElementById('bookDetailCover');
+  const noCover = document.getElementById('bookDetailNoCover');
+  if (b.coverPath) {
+    cover.src = b.coverPath; cover.style.display = '';
+    cover.onerror = () => { cover.style.display = 'none'; noCover.classList.remove('hidden'); };
+    noCover.classList.add('hidden');
+  } else { cover.style.display = 'none'; noCover.classList.remove('hidden'); }
+
+  document.getElementById('bookDetailBadges').innerHTML =
+    b.status === 'read' ? `<span class="badge b-read">✓ 読んだ</span>` : '';
+  document.getElementById('bookDetailTitle').textContent = b.title;
+  const authors = (b.authors || []).join(', ');
+  const metaParts = [authors, b.publisher, b.year].filter(Boolean);
+  document.getElementById('bookDetailMeta').textContent = metaParts.join(' · ');
+  document.getElementById('bookDetailDesc').textContent = b.description || '（説明なし）';
+
+  setBookStatusButtons(b.status);
+  setBookStars(b.rating);
+  renderBookEditTags();
+
+  document.getElementById('bookDetailModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBookDetail() {
+  document.getElementById('bookDetailModal').classList.add('hidden');
+  document.body.style.overflow = '';
+  state.editBookId = null;
+}
+
+function setBookStatusButtons(status) {
+  document.getElementById('bookStatusReadlist').className = 'status-btn' + (status === 'readlist' ? ' s-watchlist' : '');
+  document.getElementById('bookStatusRead').className    = 'status-btn' + (status === 'read'     ? ' s-watched'   : '');
+}
+
+function setBookStars(rating) {
+  document.querySelectorAll('#bookStarRating .star').forEach(s =>
+    s.classList.toggle('lit', +s.dataset.val <= rating)
+  );
+}
+
+function renderBookEditTags() {
+  const cur = document.getElementById('bookCurrentTagsList');
+  cur.innerHTML = state.editBookTags.map((tag, i) => `
+    <span class="tag-item">${esc(tag)}<button class="tag-remove" data-idx="${i}">✕</button></span>`
+  ).join('');
+  cur.querySelectorAll('.tag-remove').forEach(btn =>
+    btn.addEventListener('click', () => { state.editBookTags.splice(+btn.dataset.idx, 1); renderBookEditTags(); })
+  );
+  const pre = document.getElementById('bookPresetTagsRow');
+  pre.innerHTML = PRESET_TAGS_BOOKS.map(tag =>
+    `<button class="preset-tag-btn ${state.editBookTags.includes(tag) ? 'on' : ''}" data-tag="${escAttr(tag)}">${esc(tag)}</button>`
+  ).join('');
+  pre.querySelectorAll('.preset-tag-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag;
+      const idx = state.editBookTags.indexOf(tag);
+      if (idx !== -1) state.editBookTags.splice(idx, 1); else state.editBookTags.push(tag);
+      renderBookEditTags();
+    })
+  );
+}
+
+function addCustomBookTag() {
+  const input = document.getElementById('bookTagInput');
+  const tag   = input.value.trim();
+  if (!tag) return;
+  if (state.editBookTags.includes(tag)) { toast('すでに追加されています'); return; }
+  if (state.editBookTags.length >= 10)  { toast('タグは10個まで');        return; }
+  state.editBookTags.push(tag); input.value = ''; renderBookEditTags();
+}
+
+function saveBookDetail() {
+  if (!state.editBookId) return;
+  const status = document.getElementById('bookStatusRead').classList.contains('s-watched') ? 'read' : 'readlist';
+  updateBook(state.editBookId, { status, rating: state.editBookRating, tags: [...state.editBookTags] });
+  renderAll(); closeBookDetail(); toast('保存しました');
+}
+
+/* ============================================================
+   Mode Switching
+   ============================================================ */
+function switchMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('.mode-tab').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.mode === mode)
+  );
+  document.getElementById('searchInput').placeholder =
+    mode === 'books' ? '本を検索して追加...' : '映画を検索して追加...';
+
+  const filterTabs = document.querySelector('.filter-tabs');
+  if (mode === 'books') {
+    filterTabs.innerHTML = `
+      <button class="filter-tab active" data-filter="all">すべて<span class="tab-count" id="cnt-all"></span></button>
+      <button class="filter-tab" data-filter="readlist">読みたい<span class="tab-count" id="cnt-readlist"></span></button>
+      <button class="filter-tab" data-filter="read">読んだ<span class="tab-count" id="cnt-read"></span></button>`;
+    state.bookFilter = 'all';
+    document.getElementById('sortSelect').innerHTML = `
+      <option value="added">追加順</option>
+      <option value="title">タイトル順</option>
+      <option value="year">出版年順</option>
+      <option value="rating">評価順</option>`;
+  } else {
+    filterTabs.innerHTML = `
+      <button class="filter-tab active" data-filter="all">すべて<span class="tab-count" id="cnt-all"></span></button>
+      <button class="filter-tab" data-filter="watchlist">未視聴<span class="tab-count" id="cnt-watchlist"></span></button>
+      <button class="filter-tab" data-filter="watched">視聴済み<span class="tab-count" id="cnt-watched"></span></button>
+      <button class="filter-tab prime-tab" data-filter="prime">▶ Primeのみ<span class="tab-count" id="cnt-prime"></span></button>
+      <button class="filter-tab expiring-tab" data-filter="expiring">⏰ もうすぐ終了<span class="tab-count" id="cnt-expiring"></span></button>`;
+    state.filter = 'all';
+    document.getElementById('sortSelect').innerHTML = `
+      <option value="added">追加順</option>
+      <option value="title">タイトル順</option>
+      <option value="year">公開年順</option>
+      <option value="rating">評価順</option>`;
+  }
+  setupFilterTabEvents();
+  clearSearch();
+  renderAll();
+}
+
+/* ============================================================
    Filter & Sort
    ============================================================ */
 function filteredMovies() {
@@ -280,19 +561,26 @@ function counts() {
 function renderAll() { renderCounts(); renderGrid(); }
 
 function renderCounts() {
-  const c = counts();
-  const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v > 0 ? ` ${v}` : ''; };
-  s('cnt-all', c.all); s('cnt-watchlist', c.watchlist); s('cnt-watched', c.watched);
-  s('cnt-prime', c.prime); s('cnt-expiring', c.expiring);
+  if (state.mode === 'books') {
+    const c = bookCounts();
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v > 0 ? ` ${v}` : ''; };
+    s('cnt-all', c.all); s('cnt-readlist', c.readlist); s('cnt-read', c.read);
+  } else {
+    const c = counts();
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v > 0 ? ` ${v}` : ''; };
+    s('cnt-all', c.all); s('cnt-watchlist', c.watchlist); s('cnt-watched', c.watched);
+    s('cnt-prime', c.prime); s('cnt-expiring', c.expiring);
+  }
 }
 
 function renderGrid() {
   const grid  = document.getElementById('movieGrid');
   const empty = document.getElementById('emptyState');
-  const list  = filteredMovies();
+  const list  = state.mode === 'books' ? filteredBooks() : filteredMovies();
+  const toHTML = state.mode === 'books' ? bookCardHTML : cardHTML;
   if (!list.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
-  grid.innerHTML = list.map(cardHTML).join('');
+  grid.innerHTML = list.map(toHTML).join('');
 }
 
 function daysLeft(expiresDate) {
@@ -365,13 +653,25 @@ function setupSearch() {
   list.addEventListener('click', async e => {
     const btn = e.target.closest('.search-item-add');
     if (!btn || btn.disabled) return;
-    const tmdbId = parseInt(btn.dataset.tid);
-    btn.disabled = true; btn.textContent = '追加中…';
-    try {
-      const data = await tmdb(`/movie/${tmdbId}`);
-      await addMovie(data);
-      btn.textContent = '追加済み';
-    } catch { btn.disabled = false; btn.textContent = '追加'; toast('追加に失敗しました'); }
+
+    if (state.mode === 'books') {
+      const gbId = btn.dataset.gbookId;
+      const item = lastBookResults.find(r => r.id === gbId);
+      if (!item) return;
+      btn.disabled = true; btn.textContent = '追加中…';
+      try {
+        await addBook(item);
+        btn.textContent = '追加済み';
+      } catch { btn.disabled = false; btn.textContent = '追加'; toast('追加に失敗しました'); }
+    } else {
+      const tmdbId = parseInt(btn.dataset.tid);
+      btn.disabled = true; btn.textContent = '追加中…';
+      try {
+        const data = await tmdb(`/movie/${tmdbId}`);
+        await addMovie(data);
+        btn.textContent = '追加済み';
+      } catch { btn.disabled = false; btn.textContent = '追加'; toast('追加に失敗しました'); }
+    }
   });
 }
 
@@ -383,17 +683,28 @@ function clearSearch() {
 
 async function doSearch(q) {
   if (!q) return;
-  if (!state.apiKey) { toast('設定からTMDB APIキーを登録してください'); return; }
   const dropdown = document.getElementById('searchDropdown');
   const list     = document.getElementById('searchList');
   dropdown.classList.remove('hidden');
   list.innerHTML = `<div class="search-msg">🔍 検索中...</div>`;
-  try {
-    const results = await searchTMDB(q);
-    if (!results.length) { list.innerHTML = `<div class="search-msg">見つかりませんでした</div>`; return; }
-    list.innerHTML = results.slice(0,10).map(searchItemHTML).join('');
-  } catch (e) {
-    list.innerHTML = `<div class="search-msg">エラー: ${esc(e.message)}</div>`;
+
+  if (state.mode === 'books') {
+    try {
+      lastBookResults = await searchGoogleBooks(q);
+      if (!lastBookResults.length) { list.innerHTML = `<div class="search-msg">見つかりませんでした</div>`; return; }
+      list.innerHTML = lastBookResults.slice(0, 10).map(bookSearchItemHTML).join('');
+    } catch (e) {
+      list.innerHTML = `<div class="search-msg">エラー: ${esc(e.message)}</div>`;
+    }
+  } else {
+    if (!state.apiKey) { toast('設定からTMDB APIキーを登録してください'); dropdown.classList.add('hidden'); return; }
+    try {
+      const results = await searchTMDB(q);
+      if (!results.length) { list.innerHTML = `<div class="search-msg">見つかりませんでした</div>`; return; }
+      list.innerHTML = results.slice(0, 10).map(searchItemHTML).join('');
+    } catch (e) {
+      list.innerHTML = `<div class="search-msg">エラー: ${esc(e.message)}</div>`;
+    }
   }
 }
 
@@ -580,6 +891,24 @@ function esc(s)     { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&
 function escAttr(s) { return String(s??'').replace(/"/g,'&quot;'); }
 
 /* ============================================================
+   Filter Tab Setup
+   ============================================================ */
+function setupFilterTabEvents() {
+  document.querySelectorAll('.filter-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (state.mode === 'books') {
+        state.bookFilter = btn.dataset.filter;
+      } else {
+        state.filter = btn.dataset.filter;
+      }
+      renderGrid();
+    });
+  });
+}
+
+/* ============================================================
    Event Listeners
    ============================================================ */
 function setupEvents() {
@@ -632,21 +961,17 @@ function setupEvents() {
   });
 
   /* --- フィルタータブ --- */
-  document.querySelectorAll('.filter-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.filter = btn.dataset.filter; renderGrid();
-    });
-  });
+  setupFilterTabEvents();
 
   /* --- ソート --- */
   document.getElementById('sortSelect').addEventListener('change', e => {
-    state.sort = e.target.value; renderGrid();
+    if (state.mode === 'books') { state.bookSort = e.target.value; } else { state.sort = e.target.value; }
+    renderGrid();
   });
 
   /* --- グリッドカードクリック --- */
   document.getElementById('movieGrid').addEventListener('click', e => {
+    if (state.mode === 'books') return; // book cards handled separately
     const card = e.target.closest('.movie-card');
     if (card) openDetail(card.dataset.id);
   });
@@ -699,7 +1024,54 @@ function setupEvents() {
 
   /* --- ESC --- */
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeDetail(); closeSettings(); }
+    if (e.key === 'Escape') { closeDetail(); closeBookDetail(); closeSettings(); }
+  });
+
+  /* --- モード切替 --- */
+  document.querySelectorAll('.mode-tab').forEach(btn =>
+    btn.addEventListener('click', () => switchMode(btn.dataset.mode))
+  );
+
+  /* --- 本グリッドカードクリック --- */
+  document.getElementById('movieGrid').addEventListener('click', e => {
+    const card = e.target.closest('.book-card');
+    if (card) openBookDetail(card.dataset.bookId);
+  });
+
+  /* --- 本詳細モーダル --- */
+  document.getElementById('bookDetailClose').addEventListener('click', closeBookDetail);
+  document.getElementById('bookDetailModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeBookDetail();
+  });
+  document.getElementById('bookStatusReadlist').addEventListener('click', () => setBookStatusButtons('readlist'));
+  document.getElementById('bookStatusRead').addEventListener('click',    () => setBookStatusButtons('read'));
+
+  /* --- 本の星評価 --- */
+  const bookStars = document.querySelectorAll('#bookStarRating .star');
+  bookStars.forEach(s => {
+    s.addEventListener('click', () => {
+      const val = +s.dataset.val;
+      state.editBookRating = state.editBookRating === val ? 0 : val;
+      setBookStars(state.editBookRating);
+    });
+    s.addEventListener('mouseenter', () =>
+      bookStars.forEach(x => x.classList.toggle('lit', +x.dataset.val <= +s.dataset.val))
+    );
+    s.addEventListener('mouseleave', () => setBookStars(state.editBookRating));
+  });
+
+  /* --- 本タグ --- */
+  document.getElementById('bookAddTagBtn').addEventListener('click', addCustomBookTag);
+  document.getElementById('bookTagInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addCustomBookTag();
+  });
+
+  /* --- 本保存・削除 --- */
+  document.getElementById('bookSaveDetailBtn').addEventListener('click', saveBookDetail);
+  document.getElementById('bookDeleteDetailBtn').addEventListener('click', () => {
+    const b = state.books.find(x => x.id === state.editBookId);
+    if (!b) return;
+    if (confirm(`「${b.title}」を削除しますか？`)) { deleteBook(state.editBookId); closeBookDetail(); }
   });
 }
 

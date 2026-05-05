@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>読書メーターインポート</title>
+  <style>
+    :root { --bg:#0f0f0f; --surface:#1c1c1e; --surface2:#2c2c2e; --border:#38383a; --text:#f2f2f7; --text2:#aeaeb2; --text3:#636366; --accent:#0a84ff; --success:#30d158; --danger:#ff453a; --warn:#ffd60a; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif; padding:24px; }
+    .container { max-width:680px; margin:0 auto; }
+    .top-nav { margin-bottom:24px; }
+    .back-link { color:var(--accent); text-decoration:none; font-size:14px; }
+    h1 { font-size:22px; margin-bottom:6px; }
+    .subtitle { color:var(--text2); font-size:14px; margin-bottom:32px; }
+    .step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px; margin-bottom:16px; }
+    .step-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .step-num { background:var(--accent); color:#fff; font-size:13px; font-weight:700; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .step-title { font-size:16px; font-weight:600; }
+    .step-desc { color:var(--text2); font-size:13px; line-height:1.7; margin-bottom:14px; }
+    .note { background:var(--surface2); border-left:3px solid var(--warn); border-radius:4px; padding:10px 14px; font-size:13px; color:var(--text2); margin-top:12px; line-height:1.8; }
+    .upload-area { border:2px dashed var(--border); border-radius:10px; padding:28px; text-align:center; cursor:pointer; transition:border-color .2s; }
+    .upload-area:hover, .upload-area.drag { border-color:var(--accent); }
+    .upload-icon { font-size:36px; margin-bottom:8px; }
+    .upload-label { font-size:14px; color:var(--text2); }
+    input[type=file] { display:none; }
+    .token-row { display:flex; gap:10px; margin-top:14px; }
+    .token-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:10px 12px; font-size:14px; outline:none; }
+    .token-hint { font-size:12px; color:var(--success); margin-top:6px; }
+    .import-btn { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+    .import-btn:disabled { opacity:.4; cursor:default; }
+    #progressArea { display:none; margin-top:16px; }
+    .progress-bar-wrap { background:var(--surface2); border-radius:4px; height:6px; overflow:hidden; margin:10px 0; }
+    .progress-bar { background:var(--accent); height:100%; transition:width .3s; width:0; }
+    .progress-text { font-size:13px; color:var(--text2); }
+    .result-list { margin-top:14px; max-height:300px; overflow-y:auto; }
+    .result-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .result-item:last-child { border-bottom:none; }
+    .result-cover { width:32px; height:44px; object-fit:cover; border-radius:3px; background:var(--surface2); flex-shrink:0; }
+    .tag { font-size:11px; padding:2px 7px; border-radius:3px; font-weight:600; flex-shrink:0; }
+    .tag-ok   { background:rgba(48,209,88,.15); color:var(--success); }
+    .tag-skip { background:var(--surface2); color:var(--text3); }
+    .tag-err  { background:rgba(255,69,58,.15); color:var(--danger); }
+    .summary { background:var(--surface2); border-radius:8px; padding:14px; margin-top:14px; font-size:14px; line-height:2; }
+    .open-btn { display:block; margin-top:14px; text-align:center; background:var(--success); color:#000; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:700; cursor:pointer; text-decoration:none; }
+    .bookmarklet-link { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; border-radius:10px; padding:12px 24px; font-size:15px; font-weight:700; cursor:grab; user-select:none; box-shadow:0 2px 12px rgba(10,132,255,.35); transition:opacity .2s; }
+    .bookmarklet-link:hover { opacity:.85; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="top-nav">
+    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="back-link">← ウォッチリストに戻る</a>
+  </div>
+
+  <h1>📚 読書メーター → ウォッチリスト インポート</h1>
+  <p class="subtitle">読書メーターの「読んだ本」「読みたい本」をインポートします</p>
+
+  <!-- Step 1 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">ブックマークをブックマークバーにドラッグ</div>
+    </div>
+    <p class="step-desc">
+      下のボタンをブラウザの<strong>ブックマークバーにドラッグ</strong>してください。<br>
+      （ブックマークバーが見えない場合は <strong>⌘+Shift+B</strong> で表示できます）
+    </p>
+    <div style="text-align:center;padding:10px 0 6px">
+      <a id="bookmarklet" href="" class="bookmarklet-link" title="このリンクをブックマークバーにドラッグ">
+        📚 読書メーターからエクスポート
+      </a>
+    </div>
+    <div class="note">
+      ① このリンクをブックマークバーへドラッグ<br>
+      ② <strong>bookmeter.com</strong> を開く（ログイン済みの状態で）<br>
+      ③ 「読んだ本」または「読みたい本」のページを開く<br>
+      ④ ブックマークバーの「📚 読書メーターからエクスポート」をクリック<br>
+      ⑤ 自動で <strong>bookmeter-export.json</strong> がダウンロードされます<br>
+      ⑥ 「読んだ本」と「読みたい本」の両方のページで実行してください
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">ダウンロードしたファイルを読み込む</div>
+    </div>
+    <p class="step-desc">ダウンロードされた <strong>bookmeter-export.json</strong> をここにドロップしてください。</p>
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📂</div>
+      <div class="upload-label">クリックまたはドラッグ＆ドロップ</div>
+      <input type="file" id="fileInput" accept=".json">
+    </div>
+    <div class="token-row">
+      <input type="password" class="token-input" id="ghToken" placeholder="GitHubトークン（ghp_...）">
+      <button class="import-btn" id="importBtn" disabled onclick="startImport()">インポート開始</button>
+    </div>
+    <div id="tokenHint" class="token-hint" style="display:none">✓ ウォッチリストのトークンを自動入力しました</div>
+  </div>
+
+  <!-- Progress -->
+  <div id="progressArea" class="step">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title" id="progressTitle">インポート中...</div>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-text" id="progressText">準備中...</div>
+    <div class="result-list" id="resultList"></div>
+    <div class="summary" id="summary" style="display:none"></div>
+    <a href="https://hanako-yowaiko.github.io/movie-tracker/" class="open-btn" id="openBtn" style="display:none">
+      ✓ ウォッチリストを開く →
+    </a>
+  </div>
+</div>
+
+<script>
+// ブックマークレット（読書メーターのDOMをスクレイピング）
+(function(){
+  const code = `(async()=>{try{
+    const isRead=location.href.includes('/read');
+    const isWish=location.href.includes('/wish');
+    const isReading=location.href.includes('/reading');
+    if(!isRead&&!isWish&&!isReading){
+      alert('読んだ本・読みたい本・読書中のページで実行してください。\\n\\n例: https://bookmeter.com/users/XXXXX/books/read');
+      return;
+    }
+    // 全件読み込みスクロール
+    let prev=0;
+    for(let i=0;i<100;i++){
+      window.scrollTo(0,document.body.scrollHeight);
+      await new Promise(r=>setTimeout(r,500));
+      if(document.body.scrollHeight===prev)break;
+      prev=document.body.scrollHeight;
+    }
+    window.scrollTo(0,0);
+    const books=[];const seen=new Set();
+    for(const el of document.querySelectorAll('li, .book_item, [class*="book"]')){
+      const img=el.querySelector('img');
+      if(!img)continue;
+      let title=img.alt?.trim()||'';
+      if(!title){
+        for(const t of el.querySelectorAll('a,span,p,div')){
+          if(t.children.length>0)continue;
+          const tx=t.textContent.trim();
+          if(tx&&tx.length>1&&tx.length<100&&!/^[\\d\\s\\-／・]+$/.test(tx)){title=tx;break;}
+        }
+      }
+      if(!title||seen.has(title))continue;
+      seen.add(title);
+      // 星評価を探す
+      const starEls=[...el.querySelectorAll('[class*="star"],[class*="rating"]')];
+      let star=starEls.filter(s=>s.className?.includes('on')||s.className?.includes('fill')||s.className?.includes('active')).length;
+      if(!star){const m=el.textContent.match(/([１２３４５]|[1-5])\\s*[点つ]/);if(m)star=parseInt(m[1].replace(/[１-５]/,c=>String(c.charCodeAt(0)-65296)));}
+      books.push({title,star:star*2,coverUrl:img.src||''});
+    }
+    if(!books.length){alert('本のデータが見つかりませんでした。\\n本棚ページ（読んだ本・読みたい本）で実行してください。');return;}
+    const status=isRead?'read':isReading?'reading':'readlist';
+    const data={exportedAt:new Date().toISOString(),source:'bookmeter',status,books};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bookmeter-export.json';
+    document.body.appendChild(a);a.click();a.remove();
+    alert('完了！ '+books.length+'件を取得しました\\n\\nステータス: '+status);
+  }catch(e){alert('エラー: '+e.message);}})();`;
+  document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
+})();
+
+// GitHubトークン自動入力
+(function(){
+  const saved = localStorage.getItem('mw_ghtoken');
+  if (saved) { document.getElementById('ghToken').value = saved; document.getElementById('tokenHint').style.display = 'block'; checkReady(); }
+})();
+
+const GIST_FILENAME = 'movie-watchlist.json';
+let importData = null;
+
+const fileInput = document.getElementById('fileInput');
+const uploadArea = document.getElementById('uploadArea');
+const ghTokenInput = document.getElementById('ghToken');
+const importBtn = document.getElementById('importBtn');
+
+fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag'));
+uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+ghTokenInput.addEventListener('input', checkReady);
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      importData = JSON.parse(e.target.result);
+      const cnt = importData.books?.length || 0;
+      uploadArea.innerHTML = `<div class="upload-icon">✅</div><div class="upload-label">${esc(file.name)}（${cnt}件）</div>`;
+      checkReady();
+    } catch { alert('JSONファイルの読み込みに失敗しました'); }
+  };
+  reader.readAsText(file);
+}
+function checkReady() { importBtn.disabled = !(importData && ghTokenInput.value.trim()); }
+
+async function startImport() {
+  const token = ghTokenInput.value.trim();
+  if (!importData || !token) return;
+  importBtn.disabled = true;
+  document.getElementById('progressArea').style.display = 'block';
+  document.getElementById('progressArea').scrollIntoView({behavior:'smooth'});
+
+  try {
+    setProgress(0, 'GitHubに接続中...');
+    const gistList = await ghFetch('/gists?per_page=100', token);
+    const foundGist = gistList.find(g => g.files[GIST_FILENAME]);
+    if (!foundGist) throw new Error('Gistが見つかりません。先にメインアプリでセットアップしてください。');
+    const gistDetail = await ghFetch('/gists/' + foundGist.id, token);
+    const existing = JSON.parse(gistDetail.files[GIST_FILENAME]?.content || '{}');
+    const existingBooks = existing.books || [];
+    const existingTitles = new Set(existingBooks.map(b => b.title));
+
+    const books = importData.books || [];
+    const status = importData.status || 'read';
+    setProgress(5, books.length + '件を処理します...');
+
+    const newBooks = [];
+    const resultList = document.getElementById('resultList');
+    let skipCount = 0, notFoundCount = 0;
+
+    for (let i = 0; i < books.length; i++) {
+      const item = books[i];
+      const pct = 5 + Math.round((i / books.length) * 85);
+      setProgress(pct, '(' + (i+1) + '/' + books.length + ') ' + item.title);
+
+      if (existingTitles.has(item.title)) {
+        addResult(resultList, item.coverUrl, item.title, 'skip', '追加済み');
+        skipCount++; continue;
+      }
+
+      // Google Booksで検索
+      try {
+        const results = await searchGoogleBooks(item.title);
+        const hit = results[0];
+        if (!hit) {
+          // Google Booksで見つからなくても書誌情報なしで追加
+          const book = makeBook(item, null, status);
+          newBooks.push(book);
+          existingTitles.add(item.title);
+          addResult(resultList, item.coverUrl, item.title, 'ok', status === 'read' ? '読んだ' : '読みたい');
+        } else {
+          const book = makeBook(item, hit, status);
+          newBooks.push(book);
+          existingTitles.add(book.title);
+          addResult(resultList, book.coverPath || item.coverUrl, book.title, 'ok', status === 'read' ? '読んだ' : '読みたい');
+        }
+      } catch(e) {
+        const book = makeBook(item, null, status);
+        newBooks.push(book);
+        existingTitles.add(item.title);
+        addResult(resultList, item.coverUrl, item.title, 'ok', '追加（書影なし）');
+      }
+      await sleep(200);
+    }
+
+    setProgress(93, 'クラウドに保存中...');
+    const merged = { ...existing, books: [...newBooks, ...existingBooks] };
+    await ghFetch('/gists/' + foundGist.id, token, {
+      method: 'PATCH',
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(merged, null, 2) } } })
+    });
+
+    setProgress(100, '完了！');
+    document.getElementById('progressTitle').textContent = 'インポート完了 🎉';
+    document.getElementById('summary').style.display = 'block';
+    document.getElementById('summary').innerHTML = '✅ <strong>' + newBooks.length + '件</strong>を追加しました<br>スキップ: ' + skipCount + '件';
+    document.getElementById('openBtn').style.display = 'block';
+  } catch(e) {
+    setProgress(0, '❌ ' + e.message);
+    importBtn.disabled = false;
+  }
+}
+
+function makeBook(item, gbItem, status) {
+  const vi = gbItem?.volumeInfo || {};
+  return {
+    id: 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+    googleBooksId: gbItem?.id || null,
+    title: vi.title || item.title,
+    authors: vi.authors || [],
+    publisher: vi.publisher || '',
+    year: (vi.publishedDate || '').slice(0, 4),
+    coverPath: gbItem ? (vi.imageLinks?.thumbnail || vi.imageLinks?.smallThumbnail || '').replace('http://', 'https://') : (item.coverUrl || ''),
+    description: vi.description || '',
+    status: status === 'read' ? 'read' : 'readlist',
+    rating: Math.min(5, Math.round((item.star || 0) / 2)),
+    tags: [],
+    addedAt: new Date().toISOString(),
+  };
+}
+
+async function searchGoogleBooks(q) {
+  const res = await fetch('https://www.googleapis.com/books/v1/volumes?q=' + encodeURIComponent(q) + '&maxResults=1&printType=books');
+  const d = await res.json();
+  return d.items || [];
+}
+
+async function ghFetch(path, token, opts={}) {
+  const res = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' }
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.message || 'GitHub ' + res.status); }
+  return res.json();
+}
+
+function setProgress(pct, text) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = text;
+}
+
+function addResult(container, cover, title, type, note) {
+  const el = document.createElement('div');
+  el.className = 'result-item';
+  el.innerHTML = '<img class="result-cover" src="' + esc(cover||'') + '" onerror="this.style.visibility=\'hidden\'">' +
+    '<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title) + '</div>' +
+    '<span class="tag tag-' + type + '">' + esc(note) + '</span>';
+  container.prepend(el);
+}
+
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

@@ -75,6 +75,12 @@
       </div>
     </header>
 
+    <!-- モード切替タブ -->
+    <div class="mode-bar">
+      <button class="mode-tab active" data-mode="movies">🎬 映画</button>
+      <button class="mode-tab" data-mode="books">📚 本</button>
+    </div>
+
     <!-- フィルター・ソートバー -->
     <div class="filter-bar">
       <div class="filter-tabs">
@@ -178,6 +184,61 @@
     </div>
   </div>
 
+  <!-- 本詳細モーダル -->
+  <div id="bookDetailModal" class="modal-backdrop hidden">
+    <div class="modal detail-modal">
+      <button id="bookDetailClose" class="modal-close-btn">✕</button>
+      <div class="detail-layout">
+        <div class="detail-poster-col">
+          <div class="detail-poster-wrap">
+            <img id="bookDetailCover" class="detail-poster" src="" alt="">
+            <div id="bookDetailNoCover" class="detail-no-poster hidden">📚</div>
+          </div>
+          <div id="bookDetailBadges" class="detail-badges"></div>
+        </div>
+        <div class="detail-info-col">
+          <h2 id="bookDetailTitle" class="detail-title"></h2>
+          <div id="bookDetailMeta" class="detail-meta"></div>
+          <p id="bookDetailDesc" class="detail-overview"></p>
+
+          <div class="form-section">
+            <div class="form-label">ステータス</div>
+            <div class="status-toggle">
+              <button class="status-btn" id="bookStatusReadlist">📋 読みたい</button>
+              <button class="status-btn" id="bookStatusRead">✅ 読んだ</button>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">評価 <span class="form-hint">（読後に記録）</span></div>
+            <div class="star-rating" id="bookStarRating">
+              <span class="star" data-val="1">★</span>
+              <span class="star" data-val="2">★</span>
+              <span class="star" data-val="3">★</span>
+              <span class="star" data-val="4">★</span>
+              <span class="star" data-val="5">★</span>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-label">タグ</div>
+            <div id="bookCurrentTagsList" class="current-tags-list"></div>
+            <div id="bookPresetTagsRow" class="preset-tags-row"></div>
+            <div class="tag-add-row">
+              <input type="text" id="bookTagInput" class="tag-text-input" placeholder="カスタムタグを追加...">
+              <button id="bookAddTagBtn" class="small-btn">追加</button>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="bookSaveDetailBtn" class="primary-btn">保存</button>
+            <button id="bookDeleteDetailBtn" class="danger-btn">削除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 設定モーダル -->
   <div id="settingsModal" class="modal-backdrop hidden">
     <div class="modal settings-modal">
@@ -231,6 +292,8 @@
       <div class="form-section">
         <div class="form-label">📥 データインポート</div>
         <a href="watcha-import.html" class="import-link-btn">Watcha Pediaからインポート →</a>
+        <br>
+        <a href="bookmeter-import.html" class="import-link-btn">読書メーターからインポート →</a>
       </div>
     </div>
   </div>

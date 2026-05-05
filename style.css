@@ -824,3 +824,40 @@ a:hover { text-decoration: underline; }
   .content { padding: 14px; }
   .filter-tab { font-size: 12px; padding: 5px 10px; }
 }
+
+/* ============================================================
+   Mode Tabs (映画 / 本)
+   ============================================================ */
+.mode-bar {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  border-bottom: none;
+}
+
+.mode-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 8px 18px 10px;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all var(--ease);
+  border-radius: 0;
+}
+.mode-tab:hover { color: var(--text); }
+.mode-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* ============================================================
+   Book-specific styles
+   ============================================================ */
+.b-read { background: var(--watched); color: #000; }
+
+.book-card .card-no-poster { font-size: 40px; }
+
+/* 読書メーターインポートリンク */
+@media (max-width: 640px) {
+  .mode-tab { font-size: 13px; padding: 7px 14px 9px; }
+}
