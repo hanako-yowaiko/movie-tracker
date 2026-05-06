@@ -578,7 +578,15 @@ function renderGrid() {
   const empty = document.getElementById('emptyState');
   const list  = state.mode === 'books' ? filteredBooks() : filteredMovies();
   const toHTML = state.mode === 'books' ? bookCardHTML : cardHTML;
-  if (!list.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  if (!list.length) {
+    grid.innerHTML = '';
+    const isBooks = state.mode === 'books';
+    empty.querySelector('.empty-icon').textContent = isBooks ? '📚' : '🎞️';
+    empty.querySelector('p').textContent = isBooks ? '本が見つかりません' : '映画が見つかりません';
+    empty.querySelector('.empty-sub').textContent = isBooks ? '上の検索バーから本を追加しましょう' : '上の検索バーから映画を追加しましょう';
+    empty.classList.remove('hidden');
+    return;
+  }
   empty.classList.add('hidden');
   grid.innerHTML = list.map(toHTML).join('');
 }
