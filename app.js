@@ -54,11 +54,13 @@ const state = {
 function loadLocal() {
   state.githubToken = localStorage.getItem('mw_ghtoken') || '';
   state.gistId      = localStorage.getItem('mw_gistid')  || '';
+  state.gbApiKey    = localStorage.getItem('mw_gbkey')   || '';
 }
 
 function saveLocal() {
   localStorage.setItem('mw_ghtoken', state.githubToken);
   localStorage.setItem('mw_gistid',  state.gistId);
+  if (state.gbApiKey) localStorage.setItem('mw_gbkey', state.gbApiKey);
 }
 
 /* ============================================================
@@ -254,7 +256,8 @@ function deleteMovie(id) {
 let lastBookResults = [];
 
 async function searchGoogleBooks(q) {
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=10&printType=books`;
+  const key = state.gbApiKey ? `&key=${state.gbApiKey}` : '';
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=10&printType=books${key}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Google Books ${res.status}`);
   const d = await res.json();
@@ -835,6 +838,7 @@ function saveDetail() {
 function openSettings() {
   document.getElementById('settingsGhToken').value = '';
   document.getElementById('settingsApiKey').value  = state.apiKey;
+  document.getElementById('settingsGbKey').value   = state.gbApiKey || '';
   document.getElementById('countrySelect').value   = state.country;
   document.getElementById('settingsModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -848,10 +852,12 @@ function closeSettings() {
 async function saveSettings() {
   const newToken  = document.getElementById('settingsGhToken').value.trim();
   const newApiKey = document.getElementById('settingsApiKey').value.trim();
+  const newGbKey  = document.getElementById('settingsGbKey').value.trim();
   const newCountry = document.getElementById('countrySelect').value;
 
   if (newToken) { state.githubToken = newToken; state.gistId = ''; saveLocal(); }
   if (newApiKey) state.apiKey = newApiKey;
+  if (newGbKey) { state.gbApiKey = newGbKey; saveLocal(); }
   state.country = newCountry;
 
   // 再接続が必要な場合
