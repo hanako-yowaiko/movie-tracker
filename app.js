@@ -114,10 +114,11 @@ async function loadFromGist() {
   const raw  = gist.files[GIST_FILENAME]?.content;
   if (!raw) return;
   const data    = JSON.parse(raw);
-  state.movies  = data.movies  || [];
-  state.books   = data.books   || [];
-  state.apiKey  = data.apiKey  || '';
-  state.country = data.country || 'JP';
+  state.movies   = data.movies   || [];
+  state.books    = data.books    || [];
+  state.apiKey   = data.apiKey   || '';
+  state.country  = data.country  || 'JP';
+  if (data.gbApiKey) { state.gbApiKey = data.gbApiKey; localStorage.setItem('mw_gbkey', data.gbApiKey); }
 }
 
 /* ---- 保存（デバウンス 2秒） ---- */
@@ -143,6 +144,7 @@ async function flushSave() {
               movies:  state.movies,
               books:   state.books,
               apiKey:  state.apiKey,
+              gbApiKey: state.gbApiKey || '',
               country: state.country,
             }, null, 2),
           },
@@ -857,7 +859,7 @@ async function saveSettings() {
 
   if (newToken) { state.githubToken = newToken; state.gistId = ''; saveLocal(); }
   if (newApiKey) state.apiKey = newApiKey;
-  if (newGbKey) { state.gbApiKey = newGbKey; saveLocal(); }
+  if (newGbKey) { state.gbApiKey = newGbKey; saveLocal(); scheduleSave(); }
   state.country = newCountry;
 
   // 再接続が必要な場合
